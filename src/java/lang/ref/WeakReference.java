@@ -45,6 +45,8 @@ package java.lang.ref;
  * @since    1.2
  */
 
+//当对象只有弱引用时,gc会回收对象,并且将回收对象的弱引用加入到ReferenceQueue队列中通知到你.
+//当你想引用一个对象时,不想介入对象的生命周期时,可以使用弱引用。
 public class WeakReference<T> extends Reference<T> {
 
     /**

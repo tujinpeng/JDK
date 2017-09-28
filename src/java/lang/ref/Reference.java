@@ -87,11 +87,23 @@ public abstract class Reference<T> {
      * discovered objects through the discovered field.
      */
 
+    //目标对象的引用
     private T referent;         /* Treated specially by GC */
 
+
+
+    /**
+     * 引用队列:
+     * (1)由每个创建的引用传入
+     * (2)当引用对象可达状态改变时,会将引用加入到此队列中;
+     * (3)例如对于弱引用来说:
+     *      引用对象被回收时,gc会将弱引用加入此队列头,通知到具体的程序清除过期的弱引用
+     */
     ReferenceQueue<? super T> queue;
 
+    //下一个引用指向 reference可以形成单向链表
     Reference next;
+
     transient private Reference<T> discovered;  /* used by VM */
 
 
@@ -108,10 +120,15 @@ public abstract class Reference<T> {
      * References to this list, while the Reference-handler thread removes
      * them.  This list is protected by the above lock object.
      */
+    //全局共享 存放失效的引用
+    //当GC回收对象时,会将失效的引用加入到此pending单链表中,同时ReferenceHandler线程也会访问pending,将失效引用加入到各自引用队列中
+    //因此访问pending,要加锁lock
     private static Reference pending = null;
 
     /* High-priority thread to enqueue pending References
      */
+    //ReferenceHandler线程 全局共享
+    //不断访问存放失效引用链表pending,逐个将失效的引用加入到每个引用对象对应的引用队列中,以作通知
     private static class ReferenceHandler extends Thread {
 
         ReferenceHandler(ThreadGroup g, String name) {
@@ -122,13 +139,17 @@ public abstract class Reference<T> {
             for (;;) {
 
                 Reference r;
+                //竞争访问失效引用链表pending,需要同步块
                 synchronized (lock) {
                     if (pending != null) {
+                        //不断出队,获取pending中头部过期引用
                         r = pending;
                         Reference rn = r.next;
                         pending = (rn == r) ? null : rn;
                         r.next = r;
                     } else {
+                        //当pending链表为空时,线程进行等待
+                        //当pending元素由gc添加,因此唤醒也是由gc来
                         try {
                             lock.wait();
                         } catch (InterruptedException x) { }
@@ -142,6 +163,8 @@ public abstract class Reference<T> {
                     continue;
                 }
 
+                //将过期引用加入到对应ReferenceQueue中
+                //客户端可以不断的遍历ReferenceQueue来处理过期键(例如ReferenceHashMap)
                 ReferenceQueue q = r.queue;
                 if (q != ReferenceQueue.NULL) q.enqueue(r);
             }
