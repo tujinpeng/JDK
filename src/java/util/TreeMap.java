@@ -25,6 +25,8 @@
 
 package java.util;
 
+import java.io.IOException;
+
 /**
  * A Red-Black tree based {@link NavigableMap} implementation.
  * The map is sorted according to the {@linkplain Comparable natural
@@ -102,7 +104,19 @@ package java.util;
  * @see Collection
  * @since 1.2
  */
-
+/*
+ * 有顺序的map treeMap
+ * 红黑树实现:
+ *    红黑树性质:
+ *      红黑树首先是一棵二叉查找树，它每个结点都被标上了颜色（红色或黑色）
+ *      (1)每个节点颜色要么黑色 要么红色
+ *      (2)树根节点颜色为黑色
+ *      (3)每个叶子节点都有连个黑节点(哨兵节点);如果一个非叶子节点只有左子树,则右子树是一个黑哨兵;如果非叶子节点只有右子树,则左子树是一个黑哨兵
+ *      (4)如果一个节点是红色的,则它的两个孩子一定是黑色(父子节点不可能都是红节点)
+ *      (5)从一个节点出发,到它所有子孙叶子节点的路径上,黑节点数目相同(平衡)
+ * @param <K>
+ * @param <V>
+ */
 public class TreeMap<K,V>
     extends AbstractMap<K,V>
     implements NavigableMap<K,V>, Cloneable, java.io.Serializable
@@ -525,8 +539,19 @@ public class TreeMap<K,V>
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
      */
+    /*
+     * 红黑树插入过程
+     * 1.参数校验,若插入的key我空抛出异常
+     * 2.若树为空,则插入新的黑色节点作为root节点
+     * 3.通过遍历比较,找出插入节点位置
+     * 4.插入节点后,从插入节点的位置开始调整红黑树结构
+     * @param key
+     * @param value
+     * @return
+     */
     public V put(K key, V value) {
-        Entry<K,V> t = root;
+        Entry<K,V> t = root;//红黑树根节点
+        //1.若树为空,直接添加节点为root节点
         if (t == null) {
             compare(key, key); // type (and possibly null) check
 
@@ -539,15 +564,19 @@ public class TreeMap<K,V>
         Entry<K,V> parent;
         // split comparator and comparable paths
         Comparator<? super K> cpr = comparator;
+        //2.通过迭代遍历比较,找出新节点parent位置
         if (cpr != null) {
             do {
                 parent = t;
                 cmp = cpr.compare(key, t.key);
+                //新节点key值较小 向左遍历
                 if (cmp < 0)
                     t = t.left;
                 else if (cmp > 0)
+                    //新节点key值较大 向右遍历
                     t = t.right;
                 else
+                    //新节点key值在树中已经存在,直接覆盖它的value
                     return t.setValue(value);
             } while (t != null);
         }
@@ -566,11 +595,13 @@ public class TreeMap<K,V>
                     return t.setValue(value);
             } while (t != null);
         }
+        //3.创建新的节点,父节点指向上面遍历出来的parent
         Entry<K,V> e = new Entry<>(key, value, parent);
         if (cmp < 0)
             parent.left = e;
         else
             parent.right = e;
+        //4.插入新的红色节点后,调整红黑树结构,使之平衡
         fixAfterInsertion(e);
         size++;
         modCount++;
@@ -1885,13 +1916,31 @@ public class TreeMap<K,V>
      * Node in the Tree.  Doubles as a means to pass key-value pairs back to
      * user (see Map.Entry).
      */
-
+    //红黑树的每一个节点对象
     static final class Entry<K,V> implements Map.Entry<K,V> {
+        /*
+         *节点的key 用于比较排序查找
+         */
         K key;
+        /*
+         *节点的value 用于存放值
+         */
         V value;
+        /*
+         *左孩子
+         */
         Entry<K,V> left = null;
+        /*
+         *右孩子
+         */
         Entry<K,V> right = null;
+        /*
+         *父亲节点
+         */
         Entry<K,V> parent;
+        /*
+         *节点颜色(红 or 黑)
+         */
         boolean color = BLACK;
 
         /**
@@ -2090,18 +2139,44 @@ public class TreeMap<K,V>
     }
 
     /** From CLR */
+    /*
+     * 插入新节点后的平衡操作:
+     * 1.黑父
+     *
+     * 2.红父
+     *  (1)红叔
+     *  (2)黑叔
+     *      LL旋转
+     *      LR旋转
+     *      RR旋转
+     *      RL旋转
+     * @param x
+     */
     private void fixAfterInsertion(Entry<K,V> x) {
+        //新红节点:插入的新节点颜色,设置成红色(若新节点颜色为黑色,一定会破坏-红黑树性质5)
         x.color = RED;
 
+        //1.黑父:若插入节点的父节点是黑色,则树自平衡,不需要再调整(红黑树比平衡二叉树AVL优秀的地方在于:红黑树中黑父的节点比较多,从而需要平衡操作的几率大大减少)
+        //2.红父:若插入节点的父节点是红色,违反红黑树性质4,祖父节点一定是黑色,下面需要根据叔叔节点的颜色进行平衡操作
         while (x != null && x != root && x.parent.color == RED) {
+            //判断在树的左边插入
             if (parentOf(x) == leftOf(parentOf(parentOf(x)))) {
                 Entry<K,V> y = rightOf(parentOf(parentOf(x)));
+                //2.1 红父--红叔--黑祖父
                 if (colorOf(y) == RED) {
+                    //将父亲节点和叔叔节点颜色变为黑色,祖父节点改为红色
                     setColor(parentOf(x), BLACK);
                     setColor(y, BLACK);
                     setColor(parentOf(parentOf(x)), RED);
                     x = parentOf(parentOf(x));
                 } else {
+                    //2.2 黑叔
+                    /*      祖父
+                     *      /  \
+                     *    红父  黑叔
+                     *     /
+                     *   新节点
+                     */
                     if (x == rightOf(parentOf(x))) {
                         x = parentOf(x);
                         rotateLeft(x);
@@ -2111,6 +2186,7 @@ public class TreeMap<K,V>
                     rotateRight(parentOf(parentOf(x)));
                 }
             } else {
+                //判断在树的右边插入
                 Entry<K,V> y = leftOf(parentOf(parentOf(x)));
                 if (colorOf(y) == RED) {
                     setColor(parentOf(x), BLACK);
