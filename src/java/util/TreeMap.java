@@ -283,6 +283,12 @@ public class TreeMap<K,V>
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
      */
+    /*
+     * 红黑树遍历获取节点:
+     *      时间复杂度为树的高度o(lgn)
+     * @param key
+     * @return
+     */
     public V get(Object key) {
         Entry<K,V> p = getEntry(key);
         return (p==null ? null : p.value);
@@ -348,6 +354,7 @@ public class TreeMap<K,V>
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
      */
+    //获取关键字的树节点
     final Entry<K,V> getEntry(Object key) {
         // Offload comparator-based version for sake of performance
         if (comparator != null)
@@ -355,12 +362,15 @@ public class TreeMap<K,V>
         if (key == null)
             throw new NullPointerException();
         Comparable<? super K> k = (Comparable<? super K>) key;
+        //从树的根部开始遍历
         Entry<K,V> p = root;
         while (p != null) {
             int cmp = k.compareTo(p.key);
+            //若值较小,遍历到左孩子
             if (cmp < 0)
                 p = p.left;
             else if (cmp > 0)
+                //若值较大,遍历到右孩子
                 p = p.right;
             else
                 return p;
@@ -879,6 +889,7 @@ public class TreeMap<K,V>
      * {@code clear} operations.  It does not support the
      * {@code add} or {@code addAll} operations.
      */
+    //红黑树遍历集合,按key值从小到大依次输出节点(由EntryItrator实现迭代)
     public Set<Map.Entry<K,V>> entrySet() {
         EntrySet es = entrySet;
         return (es != null) ? es : (entrySet = new EntrySet());
@@ -1121,34 +1132,61 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 用于map的遍历
      * Base class for TreeMap Iterators
      */
     abstract class PrivateEntryIterator<T> implements Iterator<T> {
+        /*
+         * 集合下一个遍历的对象
+         */
         Entry<K,V> next;
+        /*
+         * 遍历到的当前对象
+         */
         Entry<K,V> lastReturned;
+        /*
+         * 预期的修改
+         */
         int expectedModCount;
 
         PrivateEntryIterator(Entry<K,V> first) {
             expectedModCount = modCount;
             lastReturned = null;
+            //初始化第一个元素
             next = first;
         }
 
+        /**
+         * 集合是否遍历结束:判断有没有下一个节点
+         * @return
+         */
         public final boolean hasNext() {
             return next != null;
         }
 
+        /**
+         * 获取当前的遍历元素,计算下一个next
+         * 二叉树的中序遍历,从树中最小的节点开始输出元素,按key从小到大排列
+         * @return
+         */
         final Entry<K,V> nextEntry() {
+            //获取当前的遍历元素
             Entry<K,V> e = next;
             if (e == null)
                 throw new NoSuchElementException();
             if (modCount != expectedModCount)
                 throw new ConcurrentModificationException();
+            //计算下一个遍历的元素 后继(节点右子树中最小的节点)
             next = successor(e);
+            //记录当前遍历的元素
             lastReturned = e;
             return e;
         }
 
+        /**
+         * 从后向前,按key从大到小 遍历(中序遍历颠倒)
+         * @return
+         */
         final Entry<K,V> prevEntry() {
             Entry<K,V> e = next;
             if (e == null)
@@ -1160,6 +1198,9 @@ public class TreeMap<K,V>
             return e;
         }
 
+        /**
+         *iterator遍历时,删除节点
+         */
         public void remove() {
             if (lastReturned == null)
                 throw new IllegalStateException();
@@ -1168,7 +1209,9 @@ public class TreeMap<K,V>
             // deleted entries are replaced by their successors
             if (lastReturned.left != null && lastReturned.right != null)
                 next = lastReturned;
+            //删除当前遍历的节点
             deleteEntry(lastReturned);
+            //更新expectedModCount
             expectedModCount = modCount;
             lastReturned = null;
         }
@@ -2030,17 +2073,31 @@ public class TreeMap<K,V>
     /**
      * Returns the successor of the specified Entry, or null if no such.
      */
+    /*
+     *
+     * 求一个节点的后继节点(中序遍历的非递归实现)
+     *     找下一个节点比当前节点大的元素:
+     *        (1)若节点有右子树,不断向右子树左边遍历,找到右子树中最小的节点
+     *        (2)若节点没有右子树了,跳过比当前节点小的节点向上找父节点next
+     * @param t
+     * @param <K>
+     * @param <V>
+     * @return
+     */
     static <K,V> TreeMap.Entry<K,V> successor(Entry<K,V> t) {
         if (t == null)
             return null;
         else if (t.right != null) {
+            //若有右节点,向左子树往下找,找到右子树中最小的节点,作为next
             Entry<K,V> p = t.right;
             while (p.left != null)
                 p = p.left;
             return p;
         } else {
-            Entry<K,V> p = t.parent;
-            Entry<K,V> ch = t;
+            //若没有右子树了,得向上寻找next节点
+            Entry<K,V> p = t.parent;//标记next
+            Entry<K,V> ch = t;//标记当前遍历的节点
+            //跳过遍历过的节点(比当前节点小的情况)
             while (p != null && ch == p.right) {
                 ch = p;
                 p = p.parent;
@@ -2213,11 +2270,13 @@ public class TreeMap<K,V>
                     if (x == rightOf(parentOf(x))) {
                         //判断LR型 先以父节点为中心 用旋转化为LL型
                         x = parentOf(x);
+                        //左旋
                         rotateLeft(x);
                     }
                     //LL型 父节点和祖父节点交换颜色 然后以祖父节点右旋
                     setColor(parentOf(x), BLACK);
                     setColor(parentOf(parentOf(x)), RED);
+                    //右旋
                     rotateRight(parentOf(parentOf(x)));
                 }
             } else {
