@@ -373,6 +373,7 @@ public class TreeMap<K,V>
                 //若值较大,遍历到右孩子
                 p = p.right;
             else
+                //找到相等的关键字节点
                 return p;
         }
         return null;
@@ -632,12 +633,17 @@ public class TreeMap<K,V>
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
      */
+    /*
+     *红黑树删除操作:
+     */
     public V remove(Object key) {
+        //遍历找到要删除的节点entry
         Entry<K,V> p = getEntry(key);
         if (p == null)
             return null;
 
         V oldValue = p.value;
+        //删除对应的节点,同时需要调整红黑树结构
         deleteEntry(p);
         return oldValue;
     }
@@ -2077,8 +2083,8 @@ public class TreeMap<K,V>
      *
      * 求一个节点的后继节点(中序遍历的非递归实现)
      *     找下一个节点比当前节点大的元素:
-     *        (1)若节点有右子树,不断向右子树左边遍历,找到右子树中最小的节点
-     *        (2)若节点没有右子树了,跳过比当前节点小的节点向上找父节点next
+     *        (1)t的右子树不为空,则后继就是t右子树中最小的那个元素
+     *        (2)若t没有右子树了,则后继就是第一个向左走的祖先
      * @param t
      * @param <K>
      * @param <V>
@@ -2087,15 +2093,13 @@ public class TreeMap<K,V>
     static <K,V> TreeMap.Entry<K,V> successor(Entry<K,V> t) {
         if (t == null)
             return null;
-        else if (t.right != null) {
-            //若有右节点,向左子树往下找,找到右子树中最小的节点,作为next
+        else if (t.right != null) {//case 1 : 若t的右子树不为空,则后继就是t右子树中最小的那个元素
             Entry<K,V> p = t.right;
             while (p.left != null)
                 p = p.left;
             return p;
-        } else {
-            //若没有右子树了,得向上寻找next节点
-            Entry<K,V> p = t.parent;//标记next
+        } else {//case 2 : 若t的右子树为空,则后继就是第一个向左走的祖先
+            Entry<K,V> p = t.parent;//标记父节点
             Entry<K,V> ch = t;//标记当前遍历的节点
             //跳过遍历过的节点(比当前节点小的情况)
             while (p != null && ch == p.right) {
@@ -2310,18 +2314,37 @@ public class TreeMap<K,V>
 
         // If strictly internal, copy successor's element to p and then make p
         // point to successor.
+        /*                          转化为
+         *case1.删除的节点p有左右孩子---------->删除后继节点(后继节点要么是只有一个右子树节点,要么是叶子节点):
+         *  (1)用后继节点的值替换他,颜色不变;
+         *  (2)要删除节点p引用指向后继
+         */
         if (p.left != null && p.right != null) {
+            //找出删除p节点后继
             Entry<K,V> s = successor(p);
+            //删除节点的key,value由后继替代,但是颜色不变(保持删除节点p平衡)
             p.key = s.key;
             p.value = s.value;
+            //引用指向后继节点
             p = s;
         } // p has 2 children
 
         // Start fixup at replacement node, if it exists.
         Entry<K,V> replacement = (p.left != null ? p.left : p.right);
-
+        /*
+         *case2.删除的节点p(后继)节点只有一个孩子(一定是-->黑p-红孩情况):
+         *    图:
+         *       父节点                   父节点
+         *        \                         \
+         *        黑p(删除节点)  ------>     黑孩
+         *          \
+         *         红孩
+         *    (1)删除p节点,让p的父节点的左(右)孩子指向p的孩子;
+         *    (2)将p的后孩子节点颜色标记为黑色
+         */
         if (replacement != null) {
             // Link replacement to parent
+            // 要删除p节点,要先将p的孩子和p父节点连接起来,用p的孩子代替p
             replacement.parent = p.parent;
             if (p.parent == null)
                 root = replacement;
@@ -2335,13 +2358,17 @@ public class TreeMap<K,V>
 
             // Fix replacement
             if (p.color == BLACK)
+                //删除p节点,用p的后孩子replacement替换,要从replacement开始向上调整平衡(实际操作是将p的后孩子节点颜色标记为黑色)
                 fixAfterDeletion(replacement);
         } else if (p.parent == null) { // return if we are the only node.
             root = null;
         } else { //  No children. Use self as phantom replacement and unlink.
+            //case3.删除的是叶子节点
+            //若叶子节点是黑色的,向上调整平衡
             if (p.color == BLACK)
                 fixAfterDeletion(p);
-
+            //若叶子节点是红色直接删除
+            //叶子节点直接删除
             if (p.parent != null) {
                 if (p == p.parent.left)
                     p.parent.left = null;
@@ -2353,12 +2380,39 @@ public class TreeMap<K,V>
     }
 
     /** From CLR */
+    /*
+     * 删除节点后的平衡操作
+     * @param x
+     */
     private void fixAfterDeletion(Entry<K,V> x) {
+        /*
+         * 1.一黑一红(删除只有一个孩子的节点):
+         *    图:
+         *       父节点                   父节点
+         *        \                         \
+         *        黑p(删除节点)  ------>     黑孩x
+         *          \
+         *         红孩x
+         *    (1)删除p节点,让父节点指向孩子x;
+         *    (2)x孩子节点颜色标记为黑色
+         */
+        /*
+         * 2.删除叶子节点(黑色):
+         *   因为路径上少了一个黑色,不满足红黑树性质5,要判断兄弟节点的颜色来进行平衡操作
+         */
         while (x != root && colorOf(x) == BLACK) {
+            //若删除的叶子节点x在左边
             if (x == leftOf(parentOf(x))) {
                 Entry<K,V> sib = rightOf(parentOf(x));
 
                 if (colorOf(sib) == RED) {
+                    /*
+                     * 2.1 红兄:
+                     *  通过旋转,
+                     *   黑父
+                     *   / \
+                     *
+                     */
                     setColor(sib, BLACK);
                     setColor(parentOf(x), RED);
                     rotateLeft(parentOf(x));
@@ -2383,6 +2437,7 @@ public class TreeMap<K,V>
                     x = root;
                 }
             } else { // symmetric
+                //若平衡节点x在左边 对称操作
                 Entry<K,V> sib = leftOf(parentOf(x));
 
                 if (colorOf(sib) == RED) {
