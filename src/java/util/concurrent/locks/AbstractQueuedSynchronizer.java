@@ -580,14 +580,18 @@ public abstract class AbstractQueuedSynchronizer
      * @param node the node to insert
      * @return node's predecessor
      */
+    //自旋cas方式插入新节点到队列中,如果队列为空初始化它
     private Node enq(final Node node) {
+        //插入节点自旋(死循环不断重试cas 一定到原子地插入节点直到成功)
         for (;;) {
             Node t = tail;
             if (t == null) { // Must initialize
+                //队列为空 初始化队列 尝试cas设置头节点
                 if (compareAndSetHead(new Node()))
                     tail = head;
             } else {
-                node.prev = t;
+                //队列不为空 尝试cas设置新的尾节点
+                node.prev = t;//设置新节点的前驱是老的tail节点
                 if (compareAndSetTail(t, node)) {
                     t.next = node;
                     return t;
@@ -602,9 +606,12 @@ public abstract class AbstractQueuedSynchronizer
      * @param mode Node.EXCLUSIVE for exclusive, Node.SHARED for shared
      * @return the new node
      */
+    //获取锁状态失败的线程,不断cas加入到CLH同步队列尾部
     private Node addWaiter(Node mode) {
+        // 1.创建线程等待的节点,这里会创建两种不同模式的节点:EXCLUSIVE(独占式) SHARED(共享式)
         Node node = new Node(Thread.currentThread(), mode);
         // Try the fast path of enq; backup to full enq on failure
+        // 2.先快速cas方式尝试将新节点加入到同步队列尾部(假设此时没有并发),失败后老老实实用自旋cas方式添加尾节点
         Node pred = tail;
         if (pred != null) {
             node.prev = pred;
@@ -613,6 +620,7 @@ public abstract class AbstractQueuedSynchronizer
                 return node;
             }
         }
+        // 3.自旋cas方式添加新节点到队列尾部
         enq(node);
         return node;
     }
@@ -635,6 +643,7 @@ public abstract class AbstractQueuedSynchronizer
      *
      * @param node the node
      */
+    //释放锁的线程,通知唤醒头结点的后继
     private void unparkSuccessor(Node node) {
         /*
          * If status is negative (i.e., possibly needing signal) try
@@ -652,12 +661,33 @@ public abstract class AbstractQueuedSynchronizer
          * non-cancelled successor.
          */
         Node s = node.next;
+        //获取正常状态的头节点的后继节点
         if (s == null || s.waitStatus > 0) {
             s = null;
+            /*
+             * 当后继节点是取消状态的,需要从后往前找第一个正常的节点
+             * 从后往前遍历的原因是:
+             *    当向队列添加新节点时:
+             *    <pre>
+             *        Node t = tail;
+             *        ...
+             *        node.prev = t;
+             *        if (compareAndSetTail(t, node)) {
+             *           //看这里
+             *           t.next = node;
+             *           return t;
+             *        }
+             *    </pre>
+             *    当新的tail节点建立时,到设置老的尾节点next指向新的tail之间,
+             *    若释放锁的线程通知后继节点遍历,此时是看不见next域,从前往后遍历会丢失节点,所以要从后往前找
+             *
+             *
+             */
             for (Node t = tail; t != null && t != node; t = t.prev)
                 if (t.waitStatus <= 0)
                     s = t;
         }
+        //释放锁的线程调用LockSupport.unpark,唤醒通知后继节点线程
         if (s != null)
             LockSupport.unpark(s.thread);
     }
@@ -790,6 +820,10 @@ public abstract class AbstractQueuedSynchronizer
      * @param node the node
      * @return {@code true} if thread should block
      */
+    /*
+     * 新节点竞争锁失败后 判断需不需要线程挂起:
+     *    只有当前驱节点等待状态被设置成signal后,当前线程再次竞争获取锁失败(前驱节点还没有释放锁,前驱节点释放锁一定会通知到当前节点),当前线程才会安全地进入挂起park状态
+     */
     private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
         int ws = pred.waitStatus;
         if (ws == Node.SIGNAL)
@@ -797,11 +831,22 @@ public abstract class AbstractQueuedSynchronizer
              * This node has already set status asking a release
              * to signal it, so it can safely park.
              */
+            /*
+             * 节点的前驱已经标记为signal了,线程可以放心挂起了:
+             *   (1)前驱为signal表示前驱节点还没有释放锁,当前驱释放锁时,会根据signal状态获知后继需要唤醒;
+             *   (2)无论前驱节点在当前线程挂起前还是挂起后释放锁,当先线程都能都够安全的park:
+             *      *前驱在当前线程挂起前释放锁通知LockSupport.unpark(),当前线程挂起时调用LockSupport.park()不会被挂起;
+             *      *前驱节点在当前线程调用LockSupport.park()挂起后通知LockSupport.unpark(),当前线程会被唤醒;
+             */
             return true;
         if (ws > 0) {
             /*
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
+             */
+            /*
+             * 前驱节点被取消了,跳过前面所有取消的节点 重试
+             *
              */
             do {
                 node.prev = pred = pred.prev;
@@ -812,6 +857,11 @@ public abstract class AbstractQueuedSynchronizer
              * waitStatus must be 0 or PROPAGATE.  Indicate that we
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.
+             */
+            /*
+             * 将当前节点的前驱等待状态设置成signal后,还需自旋重试竞争锁,线程不进入挂起:
+             *  防止前驱节点被后继设置成signal前(在下面那段代码之前)释放锁,这样前驱释放锁不会通知到当前线程,这样线程如果此时进入挂起将不会被唤醒,
+             *  前驱设置成signal后,再次竞争获取锁,可以避免以上前驱节点提前通知的情况
              */
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
@@ -831,7 +881,9 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if interrupted
      */
     private final boolean parkAndCheckInterrupt() {
+        //LockSupport.park()方法响应中断的
         LockSupport.park(this);
+        //返回线程中断标记,恢复线程中断位
         return Thread.interrupted();
     }
 
@@ -852,20 +904,31 @@ public abstract class AbstractQueuedSynchronizer
      * @param arg the acquire argument
      * @return {@code true} if interrupted while waiting
      */
+    /*
+     *
+     * 对于独占锁而言,获取锁状态失败的线程节点加入到队列后:
+     *  (1)若新的等待节点的前驱是头节点(代表是获取了锁状态的节点),则代表该节点(等头节点释放了锁后)是最后可能竞争到锁的,所以要自旋CAS方式不停获取锁状态;
+     *  (2)若新节点前驱不是头节点,前面还有节点在排队还没轮到它竞争锁(优先级比较低),标记前驱节点signal状态后,线程进入挂起等待状态。
+     *
+     */
     final boolean acquireQueued(final Node node, int arg) {
         boolean failed = true;
         try {
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
+                //新增的节点前驱是头节点的,不断重试获取锁状态
                 if (p == head && tryAcquire(arg)) {
-                    setHead(node);
-                    p.next = null; // help GC
+                    //优先级最高的head的后继获取到了锁,则设置当前节点为头节点
+                    setHead(node);//只有head节点的后继节点线程才会进入此方法,设置head不存在并发
+                    p.next = null; // help GC 老的head节点不可达 下次gc会回收掉
                     failed = false;
                     return interrupted;
                 }
+                //自旋获取锁失败后,需判断要不要线程挂起
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
+                    //竞争锁失败的线程挂起后若被中断,则标记interrupted为true
                     interrupted = true;
             }
         } finally {
@@ -893,6 +956,7 @@ public abstract class AbstractQueuedSynchronizer
                 }
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
+                    //线程等待的过程park响应中断的,中断后抛出中断异常给上层
                     throw new InterruptedException();
             }
         } finally {
@@ -922,13 +986,17 @@ public abstract class AbstractQueuedSynchronizer
                     failed = false;
                     return true;
                 }
+                //剩余的超时时间到了 停止获取锁返回
                 if (nanosTimeout <= 0)
                     return false;
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     nanosTimeout > spinForTimeoutThreshold)
+                    //spinForTimeoutThreshold 超时等待的最小时间 超时设置小于它 则没必要等待 线程直接自旋
                     LockSupport.parkNanos(this, nanosTimeout);
                 long now = System.nanoTime();
+                //计算剩余的超时时间
                 nanosTimeout -= now - lastTime;
+                //记录上一次线程睡眠开始的时间
                 lastTime = now;
                 if (Thread.interrupted())
                     throw new InterruptedException();
@@ -1193,7 +1261,17 @@ public abstract class AbstractQueuedSynchronizer
      *        {@link #tryAcquire} but is otherwise uninterpreted and
      *        can represent anything you like.
      */
+    /*
+     * 竞争获取独占锁 不响应中断
+     * @param arg
+     */
     public final void acquire(int arg) {
+        /*
+         * 1.cas尝试获取锁 tryAcquire由子类去实现
+         * 2.获取锁状态失败的线程,不断cas加入到CLH同步队列中
+         * 3.队列头结点(代表获取了锁状态的节点)的后继节点(最有可能优先获取到锁)不断自旋地竞争锁,
+         *   其他节点标记前驱节点状态为signal后挂起,等待前驱节点释放锁通知唤醒
+         */
         if (!tryAcquire(arg) &&
             acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
             selfInterrupt();
@@ -1212,6 +1290,10 @@ public abstract class AbstractQueuedSynchronizer
      *        {@link #tryAcquire} but is otherwise uninterpreted and
      *        can represent anything you like.
      * @throws InterruptedException if the current thread is interrupted
+     */
+    /*
+     * 竞争获取独占锁 响应中断(靠LockSupport.park()响应中断实现)
+     * @param arg
      */
     public final void acquireInterruptibly(int arg)
             throws InterruptedException {
@@ -1238,6 +1320,7 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if acquired; {@code false} if timed out
      * @throws InterruptedException if the current thread is interrupted
      */
+    //超时竞争获取独占锁(超时实际上由LockSupport.parkNanos实现) 响应中断
     public final boolean tryAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
         if (Thread.interrupted())
@@ -1256,10 +1339,14 @@ public abstract class AbstractQueuedSynchronizer
      *        can represent anything you like.
      * @return the value returned from {@link #tryRelease}
      */
+    //独占式:获取独占锁的线程释放锁
     public final boolean release(int arg) {
+        //cas尝试释放锁 对于独占锁而言,释放锁的线程只会有一个 所以这里是线程安全的 不需要cas竞争
         if (tryRelease(arg)) {
             Node h = head;
+            //线程释放锁后,若头节点等待状态被标记为signal 需要通知唤醒后继节点竞争锁
             if (h != null && h.waitStatus != 0)
+                //释放锁后 通知后继
                 unparkSuccessor(h);
             return true;
         }
@@ -1690,7 +1777,6 @@ public abstract class AbstractQueuedSynchronizer
      * Transfers node, if necessary, to sync queue after a cancelled
      * wait. Returns true if thread was cancelled before being
      * signalled.
-     * @param current the waiting thread
      * @param node its node
      * @return true if cancelled before the node was signalled
      */
