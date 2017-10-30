@@ -1298,7 +1298,7 @@ public abstract class AbstractQueuedSynchronizer
      * @throws InterruptedException if the current thread is interrupted
      */
     /*
-     * 竞争获取独占锁 响应中断(靠LockSupport.park()响应中断实现)
+     * 独占式竞争获取独占锁 响应中断(靠LockSupport.park()响应中断实现)
      * @param arg
      */
     public final void acquireInterruptibly(int arg)
@@ -1326,7 +1326,7 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if acquired; {@code false} if timed out
      * @throws InterruptedException if the current thread is interrupted
      */
-    //超时竞争获取独占锁(超时实际上由LockSupport.parkNanos实现) 响应中断
+    //独占式：超时竞争获取锁(超时实际上由LockSupport.parkNanos实现) 响应中断
     public final boolean tryAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
         if (Thread.interrupted())
@@ -1390,6 +1390,7 @@ public abstract class AbstractQueuedSynchronizer
      * you like.
      * @throws InterruptedException if the current thread is interrupted
      */
+    //响应中断地，共享式获取锁，允许多个线程获取到锁状态
     public final void acquireSharedInterruptibly(int arg)
             throws InterruptedException {
         if (Thread.interrupted())
@@ -1414,6 +1415,7 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if acquired; {@code false} if timed out
      * @throws InterruptedException if the current thread is interrupted
      */
+    //共享式：响应中断地，超时获取锁，允许多个线程获取到锁状态
     public final boolean tryAcquireSharedNanos(int arg, long nanosTimeout)
             throws InterruptedException {
         if (Thread.interrupted())
