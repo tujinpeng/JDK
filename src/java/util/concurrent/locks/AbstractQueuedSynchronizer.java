@@ -737,6 +737,7 @@ public abstract class AbstractQueuedSynchronizer
      */
     private void setHeadAndPropagate(Node node, int propagate) {
         Node h = head; // Record old head for check below
+        //获取到锁状态线程 重新设置成新的头节点
         setHead(node);
         /*
          * Try to signal next queued node if:
@@ -753,6 +754,7 @@ public abstract class AbstractQueuedSynchronizer
          * racing acquires/releases, so most need signals now or soon
          * anyway.
          */
+        //propagate>0表示此时还有空闲的锁状态,需要将释放锁的行为向后传播
         if (propagate > 0 || h == null || h.waitStatus < 0) {
             Node s = node.next;
             if (s == null || s.isShared())
@@ -1012,15 +1014,18 @@ public abstract class AbstractQueuedSynchronizer
      * @param arg the acquire argument
      */
     private void doAcquireShared(int arg) {
+        //1.将竞争失败的线程包装成共享式节点,自旋cas地方式强制加入到CLH队列中
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
+                //2.只有前期是head的节点不断自旋获取锁,其他节点标记了前驱signnal后挂起
                 if (p == head) {
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        //共享锁和独占锁最大的区别:当头节点的后继竞争到了锁之后,共享锁同时还要将获取锁的行为向后传播(此时锁状态>0:多个获取锁的线程释放锁了)
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         if (interrupted)
@@ -1029,6 +1034,7 @@ public abstract class AbstractQueuedSynchronizer
                         return;
                     }
                 }
+                //3.获取锁失败的节点判断是否要挂起
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
@@ -1339,7 +1345,7 @@ public abstract class AbstractQueuedSynchronizer
      *        can represent anything you like.
      * @return the value returned from {@link #tryRelease}
      */
-    //独占式:获取独占锁的线程释放锁
+    //独占式:获取独占锁的线程释放锁 这里只存在一个线程释放锁 对释放锁状态的操作没有竞争(不用cas)
     public final boolean release(int arg) {
         //cas尝试释放锁 对于独占锁而言,释放锁的线程只会有一个 所以这里是线程安全的 不需要cas竞争
         if (tryRelease(arg)) {
@@ -1364,7 +1370,9 @@ public abstract class AbstractQueuedSynchronizer
      *        {@link #tryAcquireShared} but is otherwise uninterpreted
      *        and can represent anything you like.
      */
+    //共享式竞争锁
     public final void acquireShared(int arg) {
+        //允许多个线程cas竞争获取获取同步状态,所以当tryAcquireShared(arg) < 0表示竞争锁失败
         if (tryAcquireShared(arg) < 0)
             doAcquireShared(arg);
     }
@@ -1423,8 +1431,10 @@ public abstract class AbstractQueuedSynchronizer
      *        and can represent anything you like.
      * @return the value returned from {@link #tryReleaseShared}
      */
+    //共享式:获取共享锁的线程们释放锁,这里会有多个线程释放锁,所以对锁状态state操作有竞争(要cas)
     public final boolean releaseShared(int arg) {
         if (tryReleaseShared(arg)) {
+            //释放锁状态后的操作
             doReleaseShared();
             return true;
         }
