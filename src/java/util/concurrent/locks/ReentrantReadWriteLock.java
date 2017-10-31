@@ -369,17 +369,22 @@ public class ReentrantReadWriteLock
          * condition wait and re-established in tryAcquire.
          */
 
+        //获取写锁的线程尝试释放锁状态 持有写锁的线程独占 此时只要独占写锁的线程操作锁状态 没有竞争
         protected final boolean tryRelease(int releases) {
+            //判断当前线程是否是持有写锁的线程，不是则抛出异常
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
+            //释放锁状态
             int nextc = getState() - releases;
             boolean free = exclusiveCount(nextc) == 0;
             if (free)
+                //若锁状态全部释放了 设置独占线程为null 即没有线程占有写锁
                 setExclusiveOwnerThread(null);
             setState(nextc);
             return free;
         }
 
+        //尝试获取独占式写锁 当有读锁存在时会获取失败
         protected final boolean tryAcquire(int acquires) {
             /*
              * Walkthrough:
@@ -393,21 +398,30 @@ public class ReentrantReadWriteLock
              *    and set owner.
              */
             Thread current = Thread.currentThread();
+            //获取此时锁状态
             int c = getState();
-            int w = exclusiveCount(c);
+            int w = exclusiveCount(c);//计算锁状态的低16位作为写状态
+            //1.有读写锁占着，判断此时尝试获取锁的线程是否是写的可重入
             if (c != 0) {
                 // (Note: if c != 0 and w == 0 then shared count != 0)
+                /*
+                 *当存在读锁或者当前线程不是获取写锁的线程，则获取写锁失败
+                 */
                 if (w == 0 || current != getExclusiveOwnerThread())
                     return false;
+                // 此时说明当前线程就是获取了写锁的线程，在重入
                 if (w + exclusiveCount(acquires) > MAX_COUNT)
                     throw new Error("Maximum lock count exceeded");
                 // Reentrant acquire
+                //因为是hold独占写锁的线程在重入 线程安全
                 setState(c + acquires);
                 return true;
             }
+            //2.此时没有线程持有读写锁,当前线程可以cas尝试公平或者非公平地获取写锁
             if (writerShouldBlock() ||
                 !compareAndSetState(c, c + acquires))
                 return false;
+            // 设置独占写锁的持有线程位当前线程
             setExclusiveOwnerThread(current);
             return true;
         }
