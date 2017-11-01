@@ -215,6 +215,13 @@ import java.util.*;
  * @author Doug Lea
  *
  */
+
+/*
+ * 读写锁(互斥共享锁)：
+ *    (1)当有线程持有写锁时，所有要获取读锁的线程失败进入等待直到写锁被释放
+ *    (2)允许多个线程同时持有读锁，但是当读锁被持有时，获取写锁的线程要失败进入等待直到所有读锁线程释放
+ *    (3)读写锁适合读远远大于写的场景 会提升并发的性能
+ */
 public class ReentrantReadWriteLock
         implements ReadWriteLock, java.io.Serializable {
     private static final long serialVersionUID = -6992448646407690164L;

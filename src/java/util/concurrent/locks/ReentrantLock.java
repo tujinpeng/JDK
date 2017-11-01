@@ -106,6 +106,15 @@ import java.util.concurrent.atomic.*;
  * @since 1.5
  * @author Doug Lea
  */
+
+/*
+ * 可重入锁(互斥锁):
+ *     (1)同一时间只有允许一个线程持有锁 并且获取锁的线程可以重入
+ *     (2)支持竞争获取锁时的公平和非公平实现
+ *        -公平锁(获取锁遵循绝对的fifo时间顺序原则排队):当能获取锁时判断同步队列中是否有节点，表示有线程比当前线程更早获取锁的，此时当前线程应该获取锁失败加入到同步队列中取排队
+ *        -非公平锁(允许插队):当前线程能获取锁时，不管同步队列中是否有更早等待获取锁的线程
+ *        -非公平锁比公平锁吞吐量高的原因：公平锁依靠同步队列排队，释放锁时不停的唤醒挂起的头节点的后继，线程上下文的切换比较多，会消耗CPU资源
+ */
 public class ReentrantLock implements Lock, java.io.Serializable {
     private static final long serialVersionUID = 7373984872572414699L;
     /** Synchronizer providing all implementation mechanics */
