@@ -369,7 +369,7 @@ public class ReentrantReadWriteLock
          * condition wait and re-established in tryAcquire.
          */
 
-        //获取写锁的线程尝试释放锁状态 持有写锁的线程独占 此时只要独占写锁的线程操作锁状态 没有竞争
+        //获取写锁的线程尝试释放锁状态 持有写锁的线程独占 此时只要独占写锁的线程能操作锁状态 没有竞争
         protected final boolean tryRelease(int releases) {
             //判断当前线程是否是持有写锁的线程，不是则抛出异常
             if (!isHeldExclusively())
@@ -462,6 +462,7 @@ public class ReentrantReadWriteLock
                 "attempt to unlock read lock, not locked by current thread");
         }
 
+        //尝试获取共享读锁 操作锁状态位有竞争
         protected final int tryAcquireShared(int unused) {
             /*
              * Walkthrough:
@@ -480,10 +481,16 @@ public class ReentrantReadWriteLock
              */
             Thread current = Thread.currentThread();
             int c = getState();
+            /*
+             * 当写锁被持有并且持有写锁的线程不是当前线程时，获取读锁失败；
+             * 当持有写锁的线程请求获取读锁（锁降级），这里是允许的。
+             */
             if (exclusiveCount(c) != 0 &&
                 getExclusiveOwnerThread() != current)
                 return -1;
+            // 走到这，代表没有线程持有写锁 当前线程可以获取读锁 sharedCount取高16位状态作为读锁状态
             int r = sharedCount(c);
+            // 尝试快速cas占用读锁，失败自旋cas竞争获取读锁
             if (!readerShouldBlock() &&
                 r < MAX_COUNT &&
                 compareAndSetState(c, c + SHARED_UNIT)) {
