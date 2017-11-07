@@ -757,6 +757,8 @@ public abstract class AbstractQueuedSynchronizer
         //propagate>0表示此时还有空闲的锁状态,需要将释放锁的行为向后传播
         if (propagate > 0 || h == null || h.waitStatus < 0) {
             Node s = node.next;
+            //当新的头结点的next节点是共享模式shared,释放锁的行为才会向后传播
+            //如果next节点为独占式节点(exclusive),不需要被唤醒,需等待所有获取共享锁的线程释放锁才会被唤醒(类似读写锁,当所有读锁线程释放,写线程才能持有锁)
             if (s == null || s.isShared())
                 doReleaseShared();
         }
@@ -2131,14 +2133,27 @@ public abstract class AbstractQueuedSynchronizer
          * <li> If interrupted while blocked in step 4, throw InterruptedException.
          * </ol>
          */
+        /*
+         * 响应中断地实现线程条件等待:
+         * -只有获取了独占锁的线程才会await,这里线程安全
+         * -当前线程竞争到独占锁后,判断条件不满足时,线程进入等待,
+         * 线程唤醒的条件:
+         *   (1)当前线程被其他线程中断;
+         *   (2)被其他线程signal和signalAll通知唤醒
+         * @throws InterruptedException
+         */
         public final void await() throws InterruptedException {
+            //线程中断,则抛异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            //将当前线程加入到等待队列中
             Node node = addConditionWaiter();
+            //当前线程释放锁状态
             int savedState = fullyRelease(node);
             int interruptMode = 0;
+            //当前线程因条件不满足进入等待,直到被中断或者被其他线程signal(判断当前线程有没有被signal从等待队列移动到同步队列中)
             while (!isOnSyncQueue(node)) {
-                LockSupport.park(this);
+                LockSupport.park(this);//线程进入等待,响应中断
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
