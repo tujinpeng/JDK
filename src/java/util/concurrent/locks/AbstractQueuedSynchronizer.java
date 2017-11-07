@@ -2036,9 +2036,12 @@ public abstract class AbstractQueuedSynchronizer
          * @throws IllegalMonitorStateException if {@link #isHeldExclusively}
          *         returns {@code false}
          */
+        //通知唤醒一个等待在condition上的线程 前提是要获取与condition相关联的锁
         public final void signal() {
+            //判断通知condition的线程是持有锁的线程
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
+            //将等待队列的第一个节点firstWaiter加入到同步队列尾部。通知唤醒firstWaiter线程
             Node first = firstWaiter;
             if (first != null)
                 doSignal(first);
@@ -2051,6 +2054,7 @@ public abstract class AbstractQueuedSynchronizer
          * @throws IllegalMonitorStateException if {@link #isHeldExclusively}
          *         returns {@code false}
          */
+        //通知唤醒所有等待在condition上的线程 前提是要获取与condition相关联的锁
         public final void signalAll() {
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
@@ -2134,29 +2138,30 @@ public abstract class AbstractQueuedSynchronizer
          * </ol>
          */
         /*
-         * 响应中断地实现线程条件等待:
+         *  在一个condition上等待（响应中断）:
          * -只有获取了独占锁的线程才会await,这里线程安全
-         * -当前线程竞争到独占锁后,判断条件不满足时,线程进入等待,
-         * 线程唤醒的条件:
+         * -当前线程竞争到独占锁后,判断条件不满足时,线程进入等待
+         * await返回的条件:
          *   (1)当前线程被其他线程中断;
-         *   (2)被其他线程signal和signalAll通知唤醒
+         *   (2)被其他线程signal和signalAll通知唤醒,并且竞争到锁
          * @throws InterruptedException
          */
         public final void await() throws InterruptedException {
             //线程中断,则抛异常
             if (Thread.interrupted())
                 throw new InterruptedException();
-            //将当前线程加入到等待队列中
+            //将当前线程加入到等待队列中（注意一个同步队列由多个条件的等待队列）
             Node node = addConditionWaiter();
             //当前线程释放锁状态
             int savedState = fullyRelease(node);
             int interruptMode = 0;
             //当前线程因条件不满足进入等待,直到被中断或者被其他线程signal(判断当前线程有没有被signal从等待队列移动到同步队列中)
             while (!isOnSyncQueue(node)) {
-                LockSupport.park(this);//线程进入等待,响应中断
+                LockSupport.park(this);//park线程进入等待(响应中断),等待signal的unpark
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            //await被唤醒的线程还要竞争获取独占锁
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
             if (node.nextWaiter != null) // clean up if cancelled
@@ -2179,6 +2184,7 @@ public abstract class AbstractQueuedSynchronizer
          * <li> If interrupted while blocked in step 4, throw InterruptedException.
          * </ol>
          */
+        //在一个condition上超时等待(响应中断) 超时等待实际上由LockSupport.parkNanos实现
         public final long awaitNanos(long nanosTimeout)
                 throws InterruptedException {
             if (Thread.interrupted())
@@ -2268,6 +2274,7 @@ public abstract class AbstractQueuedSynchronizer
          * <li> If timed out while blocked in step 4, return false, else true.
          * </ol>
          */
+        //在一个condition上超时(制定时间单位)等待(响应中断) 超时等待实际上由LockSupport.parkNanos实现
         public final boolean await(long time, TimeUnit unit)
                 throws InterruptedException {
             if (unit == null)
