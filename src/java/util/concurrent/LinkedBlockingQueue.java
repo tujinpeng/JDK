@@ -406,6 +406,14 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
      *
      * @throws NullPointerException if the specified element is null
      */
+    /*
+     * 入队:
+     *   (1)当队列满时,直接返回false
+     *   (2)尾部入队,入队时需要持有putLock互斥锁
+     *   (3)当入队成功后,释放put锁后,若当初队列为空时,通知taker等待在notEmpty上的线程
+     * @param e
+     * @return
+     */
     public boolean offer(E e) {
         if (e == null) throw new NullPointerException();
         final AtomicInteger count = this.count;
