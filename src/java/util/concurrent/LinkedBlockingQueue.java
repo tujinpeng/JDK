@@ -44,19 +44,19 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
- * An optionally-bounded {@linkplain BlockingQueue blocking queue} based on
- * linked nodes.
+ * An optionally-bounded {@linkplain BlockingQueue blocking queue} based on              //LinkedBlockingQueue是一个基于链表的有界队列
+ * linked nodes.                                                                         //遵循fifo先进先出的原则
  * This queue orders elements FIFO (first-in-first-out).
- * The <em>head</em> of the queue is that element that has been on the
+ * The <em>head</em> of the queue is that element that has been on the                  //head是队列中呆的最长时间的元素，tail是呆的最短的元素
  * queue the longest time.
  * The <em>tail</em> of the queue is that element that has been on the
  * queue the shortest time. New elements
- * are inserted at the tail of the queue, and the queue retrieval
+ * are inserted at the tail of the queue, and the queue retrieval                       //队列从尾部入队，头部出队
  * operations obtain elements at the head of the queue.
- * Linked queues typically have higher throughput than array-based queues but
+ * Linked queues typically have higher throughput than array-based queues but           //在并发应用中，基于链表的队列通常比基于数组的队列有更高的吞吐量
  * less predictable performance in most concurrent applications.
  *
- * <p> The optional capacity bound constructor argument serves as a
+ * <p> The optional capacity bound constructor argument serves as a                     //LinkedBlockingQueue提供执行容量的队列构造方法，创建队列时，如果容量未制定默认为Integer.MAX_VALUE
  * way to prevent excessive queue expansion. The capacity, if unspecified,
  * is equal to {@link Integer#MAX_VALUE}.  Linked nodes are
  * dynamically created upon each insertion unless this would bring the
@@ -67,7 +67,7 @@ import java.util.NoSuchElementException;
  * Iterator} interfaces.
  *
  * <p>This class is a member of the
- * <a href="{@docRoot}/../technotes/guides/collections/index.html">
+ * <a href="{@docRoot}/../technotes/guides/collections/index.html">                     //LinkedBlockingQueue时java collection框架的一员
  * Java Collections Framework</a>.
  *
  * @since 1.5
@@ -80,22 +80,22 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     private static final long serialVersionUID = -6903933977591709194L;
 
     /*
-     * A variant of the "two lock queue" algorithm.  The putLock gates
-     * entry to put (and offer), and has an associated condition for
-     * waiting puts.  Similarly for the takeLock.  The "count" field
-     * that they both rely on is maintained as an atomic to avoid
+     * A variant of the "two lock queue" algorithm.  The putLock gates                  //LinkedBlockingQueue采用"双锁队列"算法的变种
+     * entry to put (and offer), and has an associated condition for                    //putLock限制put或者offer入队并发操作，同时有一个关联condition（notFull）实现队列满时的put线程等待；
+     * waiting puts.  Similarly for the takeLock.  The "count" field                    //takeLock限制线程take或者poll操作，同时有一个关联的condition(notEmpty)为了实现队列空时的take线程等待
+     * that they both rely on is maintained as an atomic to avoid                       //出队入队时对queue中元素个数count的统计依赖一个原子操作类更新，避免在大多数情况下需要持有queue的两把锁
      * needing to get both locks in most cases. Also, to minimize need
      * for puts to get takeLock and vice-versa, cascading notifies are
-     * used. When a put notices that it has enabled at least one take,
-     * it signals taker. That taker in turn signals others if more
+     * used. When a put notices that it has enabled at least one take,                  //当有一个put通知时意味着此时队列中至少有一个元素可以take，通知taker线程消费
+     * it signals taker. That taker in turn signals others if more                      //当有一个take通知时意味着有更多的元素可以入队，take完成后通知put
      * items have been entered since the signal. And symmetrically for
-     * takes signalling puts. Operations such as remove(Object) and
+     * takes signalling puts. Operations such as remove(Object) and                     //操作例如remove，iterators，需要同时获取两把锁
      * iterators acquire both locks.
      *
-     * Visibility between writers and readers is provided as follows:
+     * Visibility between writers and readers is provided as follows:                   //入队线程对出队线程可见性(入队节点)问题由如下保证：
      *
-     * Whenever an element is enqueued, the putLock is acquired and
-     * count updated.  A subsequent reader guarantees visibility to the
+     * Whenever an element is enqueued, the putLock is acquired and                     //当一个元素入队时，先获取到putLock，然后原子更新count，后续对count的读将保证线程对入队节点的可见性，
+     * count updated.  A subsequent reader guarantees visibility to the                 //后续如果有一个线程出队，获取takeLock，然后读原子count变量count.get()，此时能够保证take线程可见新入队的节点
      * enqueued Node by either acquiring the putLock (via fullyLock)
      * or by acquiring the takeLock, and then reading n = count.get();
      * this gives visibility to the first n items.
@@ -196,6 +196,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     private void enqueue(Node<E> node) {
         // assert putLock.isHeldByCurrentThread();
         // assert last.next == null;
+        //入队将last引用指向新节点，这里同一时间只能有一个获取了put锁的线程进入，线程安全
         last = last.next = node;
     }
 
@@ -207,6 +208,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     private E dequeue() {
         // assert takeLock.isHeldByCurrentThread();
         // assert head.item == null;
+        //出队的是head节点的next节点
         Node<E> h = head;
         Node<E> first = h.next;
         h.next = h; // help GC
@@ -327,6 +329,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
      * @throws InterruptedException {@inheritDoc}
      * @throws NullPointerException {@inheritDoc}
      */
+    //put入队 区别与offer操作：当队列满时put线程等待在notFull队列上，直到taker线程出队后通知(队列未满)
     public void put(E e) throws InterruptedException {
         if (e == null) throw new NullPointerException();
         // Note: convention in all put/take/etc is to preset local var
@@ -368,6 +371,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
      * @throws InterruptedException {@inheritDoc}
      * @throws NullPointerException {@inheritDoc}
      */
+    //offer超时入队：当队列满时，offer线程只会在notFull队列上等待taker线程的通知一定时间，不会一直等
     public boolean offer(E e, long timeout, TimeUnit unit)
         throws InterruptedException {
 
@@ -409,58 +413,95 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     /*
      * 入队:
      *   (1)当队列满时,直接返回false
-     *   (2)尾部入队,入队时需要持有putLock互斥锁
-     *   (3)当入队成功后,释放put锁后,若当初队列为空时,通知taker等待在notEmpty上的线程
+     *   (2)多个线程入队竞争操作last,需要持有putLock互斥锁(保证所有入队线程对tail的可见性和原子性)
+     *   (3)当入队成功后,释放put锁后,若当初队列为空时,signal出队等待在notEmpty上的线程
      * @param e
      * @return
      */
     public boolean offer(E e) {
         if (e == null) throw new NullPointerException();
         final AtomicInteger count = this.count;
+        //入队时队列慢返回false
         if (count.get() == capacity)
             return false;
         int c = -1;
         Node<E> node = new Node(e);
+        //入队时操作last引用，需要持有putLock互斥锁
         final ReentrantLock putLock = this.putLock;
         putLock.lock();
         try {
+            //put线程持有putLock锁后，通过读volatile变量count，感知taker线程对队列的操作变化
             if (count.get() < capacity) {
-                enqueue(node);
+                //判断队列未满 ,进行入队
+                enqueue(node);//入队
+                /*
+                 * (1)put线程通过写volatile变量count，让后续taker线程可见到队列的变化(多了个任务):
+                 *       一旦有一个put线程入队，用原子操作类更新count(写volatile变量)，后续的taker线程通过(读volatile变量)立马感知可见到队列变化,出队
+                 * (2)出队入队线程都会竞争操作任务数count，所以count要用原子操作类（轻量级锁），不需要持有put和taker两锁来操作count
+                 *
+                 */
                 c = count.getAndIncrement();
+                //入队完成后，判断当前任务数小于队列容量，则要通知put线程等待在notFull等待队列上的线程
                 if (c + 1 < capacity)
                     notFull.signal();
             }
         } finally {
+            //入队结束，释放put锁
             putLock.unlock();
         }
+        //当队列入队前为空时，可能此时有taker线程在notEmpty等待队列上等待，通知他们来出队
         if (c == 0)
             signalNotEmpty();
         return c >= 0;
     }
 
 
+    /*
+     * 出队：
+     *   (1)多个线程出队时要竞争操作head,需要持有takeLock互斥锁(保证所有出队线程对head的可见性和原子性)
+     *   (2)当队列为空时,taker线程在notEmpty等待队列上等待,直到put线程通知
+     *   (3)当出队结束后,释放take锁后,若当初队列满了时,signal通知入队线程等待在notFull上的线程
+     * @return
+     * @throws InterruptedException
+     */
     public E take() throws InterruptedException {
         E x;
         int c = -1;
         final AtomicInteger count = this.count;
         final ReentrantLock takeLock = this.takeLock;
+        //出队前，需要获取到takeLock锁
         takeLock.lockInterruptibly();
         try {
+            //take线程takeLock持有后，通过读volatile变量count，感知put线程对队列的操作变化
             while (count.get() == 0) {
+                //此时队列为空，take不到任务，当前线程等待在notEmpty队列上，释放takeLock
                 notEmpty.await();
             }
+            //队列中有元素，开始出队
             x = dequeue();
+            //taker线程对volatile变量count的写，让后续put线程能够可见感知到此变化(少了个任务)
             c = count.getAndDecrement();
-            if (c > 1)
+            if (c > 1)//出队后，此时队列中还有元素，则通知等待在notEmpty上taker线程
                 notEmpty.signal();
         } finally {
+            //出队结束，释放takeLock锁
             takeLock.unlock();
         }
+        //若出队之前，队列满了，则要通知等待在notFull队列上的put线程
         if (c == capacity)
             signalNotFull();
         return x;
     }
 
+    /*
+     * 超时出队：
+     *    (1)当队列为空，没有任务时，take线程不会一直等待put线程通知，只会等待指定时间，然后返回null
+     *    (2)超时等待实际上右condition的超时等待机制实现
+     * @param timeout
+     * @param unit
+     * @return
+     * @throws InterruptedException
+     */
     public E poll(long timeout, TimeUnit unit) throws InterruptedException {
         E x = null;
         int c = -1;
