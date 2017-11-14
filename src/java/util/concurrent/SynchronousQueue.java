@@ -40,30 +40,30 @@ import java.util.concurrent.atomic.*;
 import java.util.*;
 
 /**
- * A {@linkplain BlockingQueue blocking queue} in which each insert
+ * A {@linkplain BlockingQueue blocking queue} in which each insert                            //SynchronousQueue每一次线程的插入操作必须等待另一个线程的删除操作，反之亦然。
  * operation must wait for a corresponding remove operation by another
- * thread, and vice versa.  A synchronous queue does not have any
+ * thread, and vice versa.  A synchronous queue does not have any                              //synchronous queue 没有任何内部的容量
  * internal capacity, not even a capacity of one.  You cannot
- * <tt>peek</tt> at a synchronous queue because an element is only
+ * <tt>peek</tt> at a synchronous queue because an element is only                             //无法peek,remove操作，因为只有当一个插入和删除线程匹配上时，才会有一个（任务）元素的出现
  * present when you try to remove it; you cannot insert an element
  * (using any method) unless another thread is trying to remove it;
- * you cannot iterate as there is nothing to iterate.  The
- * <em>head</em> of the queue is the element that the first queued
- * inserting thread is trying to add to the queue; if there is no such
+ * you cannot iterate as there is nothing to iterate.  The                                     //无法iterator遍历操作，因为队列里没有任何(任务)元素
+ * <em>head</em> of the queue is the element that the first queued                             //若队列的head时第一个最早尝试插入的线程；如果尝试插入的线程在队列中不存在，那么poll出队操作会直接返回null
+ * inserting thread is trying to add to the queue; if there is no such                         //若队列的head时第一个最早尝试删除的线程；如果尝试删除的线程在队列中不存在，那么offer出队操作会直接返回null
  * queued thread then no element is available for removal and
  * <tt>poll()</tt> will return <tt>null</tt>.  For purposes of other
  * <tt>Collection</tt> methods (for example <tt>contains</tt>), a
- * <tt>SynchronousQueue</tt> acts as an empty collection.  This queue
+ * <tt>SynchronousQueue</tt> acts as an empty collection.  This queue                          //SynchronousQueue实现的Collection的一些方法 例如contain，直接返回false
  * does not permit <tt>null</tt> elements.
  *
- * <p>Synchronous queues are similar to rendezvous channels used in
- * CSP and Ada. They are well suited for handoff designs, in which an
+ * <p>Synchronous queues are similar to rendezvous channels used in                            //synchronous queue适合于手递手传递这样的设计场景
+ * CSP and Ada. They are well suited for handoff designs, in which an                          //类似于一个生产者线程在生产一个任务元素 另外一个消费者线程要负责处理此任务 这两者要保持同步
  * object running in one thread must sync up with an object running
  * in another thread in order to hand it some information, event, or
  * task.
  *
- * <p> This class supports an optional fairness policy for ordering
- * waiting producer and consumer threads.  By default, this ordering
+ * <p> This class supports an optional fairness policy for ordering                            //synchronous queue支持一个内部的公平和非公平策略，针对这个等待的生产者线程们或者消费者线程们排序问题（fifo和lifo）
+ * waiting producer and consumer threads.  By default, this ordering                           //默认queue内部采用非公平策略（）
  * is not guaranteed. However, a queue constructed with fairness set
  * to <tt>true</tt> grants threads access in FIFO order.
  *
