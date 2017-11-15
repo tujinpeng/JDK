@@ -63,7 +63,7 @@ import java.util.*;
  * task.
  *
  * <p> This class supports an optional fairness policy for ordering                            //synchronous queue支持一个内部的公平和非公平策略，针对这个等待的生产者线程们或者消费者线程们排序问题（fifo和lifo）
- * waiting producer and consumer threads.  By default, this ordering                           //默认queue内部采用非公平策略（）
+ * waiting producer and consumer threads.  By default, this ordering                           //默认queue内部采用非公平策略
  * is not guaranteed. However, a queue constructed with fairness set
  * to <tt>true</tt> grants threads access in FIFO order.
  *
@@ -85,15 +85,15 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
 
     /*
      * This class implements extensions of the dual stack and dual
-     * queue algorithms described in "Nonblocking Concurrent Objects
+     * queue algorithms described in "Nonblocking Concurrent Objects                          //SynchronousQueue是一种无锁化队列算法
      * with Condition Synchronization", by W. N. Scherer III and
      * M. L. Scott.  18th Annual Conf. on Distributed Computing,
      * Oct. 2004 (see also
      * http://www.cs.rochester.edu/u/scott/synchronization/pseudocode/duals.html).
      * The (Lifo) stack is used for non-fair mode, and the (Fifo)
      * queue for fair mode. The performance of the two is generally
-     * similar. Fifo usually supports higher throughput under
-     * contention but Lifo maintains higher thread locality in common
+     * similar. Fifo usually supports higher throughput under                                //队列有两种实现 栈(LIFO)和队列(FIFO)
+     * contention but Lifo maintains higher thread locality in common                        //队列的实现在大多数竞争的场景里比栈有更高的吞吐量,但是栈相对而言有更高的线程本地化???
      * applications.
      *
      * A dual queue (and similarly stack) is one that at any given
@@ -181,6 +181,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
     }
 
     /** The number of CPUs, for spin control */
+    //cpu核数 cpu核数越大,自旋地次数可以越多
     static final int NCPUS = Runtime.getRuntime().availableProcessors();
 
     /**
@@ -190,6 +191,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
      * seems not to vary with number of CPUs (beyond 2) so is just
      * a constant.
      */
+    //当限制超时时间时,每次都需要校验超时时间,自旋次数设置少点,为32
     static final int maxTimedSpins = (NCPUS < 2) ? 0 : 32;
 
     /**
@@ -197,15 +199,18 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
      * This is greater than timed value because untimed waits spin
      * faster since they don't need to check times on each spin.
      */
+    //当不限制超时时间时,自旋次数可以设置多点,因为自旋地时候不需要校验时间
     static final int maxUntimedSpins = maxTimedSpins * 16;
 
     /**
      * The number of nanoseconds for which it is faster to spin
      * rather than to use timed park. A rough estimate suffices.
      */
+    //超时时间设置的阀值 小于它还不如自旋
     static final long spinForTimeoutThreshold = 1000L;
 
     /** Dual stack */
+    //synchronousQueue 默认栈实现
     static final class TransferStack extends Transferer {
         /*
          * This extends Scherer-Scott dual stack algorithm, differing,
