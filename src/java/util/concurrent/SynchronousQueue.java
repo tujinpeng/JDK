@@ -222,25 +222,35 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
 
         /* Modes for SNodes, ORed together in node fields */
         /** Node represents an unfulfilled consumer */
+        //未匹配的消费者状态
         static final int REQUEST    = 0;
         /** Node represents an unfulfilled producer */
+        //未匹配的生产者状态
         static final int DATA       = 1;
         /** Node is fulfilling another unfulfilled DATA or REQUEST */
+        //匹配中的生产者或者消费者状态
         static final int FULFILLING = 2;
 
         /** Return true if m has fulfilling bit set */
         static boolean isFulfilling(int m) { return (m & FULFILLING) != 0; }
 
         /** Node class for TransferStacks. */
+        //栈中节点
         static final class SNode {
-            volatile SNode next;        // next node in stack
-            volatile SNode match;       // the node matched to this
-            volatile Thread waiter;     // to control park/unpark
+            volatile SNode next;        // next node in stack           下一个在等待的节点
+            volatile SNode match;       // the node matched to this     要匹配的节点
+            volatile Thread waiter;     // to control park/unpark       在节点上等待的线程
             Object item;                // data; or null for REQUESTs
-            int mode;
+            int mode;                   // 节点状态（未匹配的生产者-DATA、未匹配的消费者-REQUEST、正在匹配中-FULFILLING）
             // Note: item and mode fields don't need to be volatile
             // since they are always written before, and read after,
             // other volatile/atomic operations.
+
+            /*
+             * 注意：
+             *   item，item两个字段不需要volatile修饰，因为：
+             *      他们写总是在其他volatile变量写之前，读总是在其他volatile变量读之后，满足volatile读写happend-before原则
+             */
 
             SNode(Object item) {
                 this.item = item;
@@ -303,8 +313,10 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         }
 
         /** The head (top) of the stack */
+        //栈顶元素head
         volatile SNode head;
 
+        //cas更新栈顶元素
         boolean casHead(SNode h, SNode nh) {
             return h == head &&
                 UNSAFE.compareAndSwapObject(this, headOffset, h, nh);
@@ -354,6 +366,7 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
 
             for (;;) {
                 SNode h = head;
+                //情况1：当栈为空或者新请求的模式和栈中节点模式一致（都是）
                 if (h == null || h.mode == mode) {  // empty or same-mode
                     if (timed && nanos <= 0) {      // can't wait
                         if (h != null && h.isCancelled())
