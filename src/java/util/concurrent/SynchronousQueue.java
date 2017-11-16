@@ -366,27 +366,42 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
 
             for (;;) {
                 SNode h = head;
-                //情况1：当栈为空或者新请求的模式和栈中节点模式一致（都是）
-                if (h == null || h.mode == mode) {  // empty or same-mode
-                    if (timed && nanos <= 0) {      // can't wait
+                /*
+                 * 将新节点状态和栈顶节点去做匹配:
+                 *
+                 * 情况1：栈为空或者状态一致（都是生产者线程,或者消费者线程）:
+                 *   -如果是offer或poll操作,此时栈中没有等待匹配的take或者put线程,不会等待,直接返回null
+                 *   -如果是take和put操作,则会先自旋一段时间然后进入等待状态,等待其他的put和take线程,进行匹配唤醒
+                 */
+                if (h == null || h.mode == mode) {  // empty or same-mode   栈为空或者判断是相同状态
+                    if (timed && nanos <= 0) {      // can't wait           若是不需要等待的操作,offer和poll操作
                         if (h != null && h.isCancelled())
+                            //头节点被取消,则重试
                             casHead(h, h.next);     // pop cancelled node
                         else
+                            //头节点有效,表示此时没有不同状态的节点在栈中,无法匹配,则直接返回null,出队入队失败
                             return null;
-                    } else if (casHead(h, s = snode(s, e, h, mode))) {
+                    } else if (casHead(h, s = snode(s, e, h, mode))) {//   若需要等待的操作,take和put操作,将新节点cas加入到栈顶
+                        //新的节点进入等待之前,先自旋一段时间,若在自旋地时间内匹配上其他线程,则返回不需要进入等待状态,否则进入等待状态知道后续的新请求和它匹配上
+                        //这种状态在高并发场景下,任务执行的足够快,会减少大量的线程上下文切换的开销,提高了吞吐量
                         SNode m = awaitFulfill(s, timed, nanos);
                         if (m == s) {               // wait was cancelled
                             clean(s);
                             return null;
                         }
+                        //------处于自旋或者等待匹配的线程,被后续新的请求匹配上后,返回结果
                         if ((h = head) != null && h.next == s)
                             casHead(h, s.next);     // help s's fulfiller
                         return (mode == REQUEST) ? m.item : s.item;
                     }
                 } else if (!isFulfilling(h.mode)) { // try to fulfill
+                    /*
+                     * 情况2:状态不一样并且头节点状态不是匹配中:
+                     *      新的请求可以和栈顶head做匹配,握手离开了
+                     */
                     if (h.isCancelled())            // already cancelled
-                        casHead(h, h.next);         // pop and retry
-                    else if (casHead(h, s=snode(s, e, h, FULFILLING|mode))) {
+                        casHead(h, h.next);         // pop and retry    头节点已经取消了 出队然后重试
+                    else if (casHead(h, s=snode(s, e, h, FULFILLING|mode))) {//设置新节点为头节点,状态为匹配中
                         for (;;) { // loop until matched or waiters disappear
                             SNode m = s.next;       // m is s's match
                             if (m == null) {        // all waiters are gone
@@ -395,14 +410,19 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
                                 break;              // restart main loop
                             }
                             SNode mn = m.next;
+                            //让新节点和老的头节点匹配 匹配上后唤醒在老的头结点上自旋或者等待的线程,双双返回
                             if (m.tryMatch(s)) {
-                                casHead(s, mn);     // pop both s and m
-                                return (mode == REQUEST) ? m.item : s.item;
+                                casHead(s, mn);     // pop both s and m  新的请求线程匹配上老的头节点后双双出队,设置新的head节点为next的next
+                                return (mode == REQUEST) ? m.item : s.item;//----新的请求线程匹配上栈中老的头节点,返回结果
                             } else                  // lost match
                                 s.casNext(m, mn);   // help unlink
                         }
                     }
                 } else {                            // help a fulfiller
+                    /*
+                     * 情况3:头节点的状态为匹配中的
+                     *   新的请求线程帮助头节点匹配,然后重试继续和新的head节点匹配
+                     */
                     SNode m = h.next;               // m is h's match
                     if (m == null)                  // waiter is gone
                         casHead(h, null);           // pop fulfilling node
