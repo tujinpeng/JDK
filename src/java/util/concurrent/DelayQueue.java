@@ -39,24 +39,24 @@ import java.util.concurrent.locks.*;
 import java.util.*;
 
 /**
- * An unbounded {@linkplain BlockingQueue blocking queue} of
- * <tt>Delayed</tt> elements, in which an element can only be taken
- * when its delay has expired.  The <em>head</em> of the queue is that
+ * An unbounded {@linkplain BlockingQueue blocking queue} of                        //DelayQueue是一个使用优先级队列实现的无界阻塞队列
+ * <tt>Delayed</tt> elements, in which an element can only be taken                 //只有当queue中元素过期时才能被take出来
+ * when its delay has expired.  The <em>head</em> of the queue is that              //head元素是队列中最早过期的元素
  * <tt>Delayed</tt> element whose delay expired furthest in the
- * past.  If no delay has expired there is no head and <tt>poll</tt>
+ * past.  If no delay has expired there is no head and <tt>poll</tt>                //当head元素还没有过期时,此时poll操作返回null,只有当head元素过期时,即getDelay(TimeUnit.NANOSECONDS)<=0时,poll才会返回结果
  * will return <tt>null</tt>. Expiration occurs when an element's
  * <tt>getDelay(TimeUnit.NANOSECONDS)</tt> method returns a value less
  * than or equal to zero.  Even though unexpired elements cannot be
  * removed using <tt>take</tt> or <tt>poll</tt>, they are otherwise
  * treated as normal elements. For example, the <tt>size</tt> method
  * returns the count of both expired and unexpired elements.
- * This queue does not permit null elements.
+ * This queue does not permit null elements.                                        //DelayQueue不允许放入空的元素
  *
  * <p>This class and its iterator implement all of the
- * <em>optional</em> methods of the {@link Collection} and {@link
+ * <em>optional</em> methods of the {@link Collection} and {@link                   //DelayQueue实现了collection和iterator接口
  * Iterator} interfaces.
  *
- * <p>This class is a member of the
+ * <p>This class is a member of the                                                 //DelayQueue时collections的一员
  * <a href="{@docRoot}/../technotes/guides/collections/index.html">
  * Java Collections Framework</a>.
  *
@@ -68,14 +68,21 @@ import java.util.*;
 public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
     implements BlockingQueue<E> {
 
+    /**
+     * 优先级队列的可见性和原子性的保证lock
+     */
     private transient final ReentrantLock lock = new ReentrantLock();
+
+    /**
+     * 存放队列元素的优先级队列(最大最小堆) 保证第一个元素优先级最低(最高)
+     */
     private final PriorityQueue<E> q = new PriorityQueue<E>();
 
     /**
-     * Thread designated to wait for the element at the head of
-     * the queue.  This variant of the Leader-Follower pattern
+     * Thread designated to wait for the element at the head of                     //leader线程用来等待队列中head节点过期
+     * the queue.  This variant of the Leader-Follower pattern                      //leader线程设计基于"Leader-Follower"算法的变种,为了最小粒度的实现没必要的超时的等待,减少线程上下文的切换
      * (http://www.cs.wustl.edu/~schmidt/POSA/POSA2/) serves to
-     * minimize unnecessary timed waiting.  When a thread becomes
+     * minimize unnecessary timed waiting.  When a thread becomes                   //当一个线程成为leader线程时,它仅仅等待head元素过期,其他followes线程将无限期等待,等待leader线程take()或者poll()结束,通知唤醒竞争成为新的leader线程
      * the leader, it waits only for the next delay to elapse, but
      * other threads await indefinitely.  The leader thread must
      * signal some other thread before returning from take() or
@@ -93,6 +100,8 @@ public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
      * Condition signalled when a newer element becomes available
      * at the head of the queue or a new thread may need to
      * become leader.
+     *
+     * 当队列头部有元素时或者一个新的线程可能成为head线程时的condition
      */
     private final Condition available = lock.newCondition();
 
