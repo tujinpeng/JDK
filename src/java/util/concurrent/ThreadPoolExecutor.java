@@ -41,33 +41,33 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.*;
 
 /**
- * An {@link ExecutorService} that executes each submitted task using
- * one of possibly several pooled threads, normally configured
- * using {@link Executors} factory methods.
+ * An {@link ExecutorService} that executes each submitted task using               //线程池是ExecutorService接口的扩展类
+ * one of possibly several pooled threads, normally configured                      //一个ExecutorService执行每执行一个提交的任务,利用线程池中提供服务的工作者线程
+ * using {@link Executors} factory methods.                                         //通常提供的ExecutorService服务用工厂类Executors创建
  *
- * <p>Thread pools address two different problems: they usually
- * provide improved performance when executing large numbers of
- * asynchronous tasks, due to reduced per-task invocation overhead,
+ * <p>Thread pools address two different problems: they usually                     //线程池旨在解决两个问题:
+ * provide improved performance when executing large numbers of                     //1.当处理大批量异步任务时,提高了任务执行的效率,因为它减少了每个任务调用开销(无需频繁的为每个任务创建线程)
+ * asynchronous tasks, due to reduced per-task invocation overhead,                 //2.同时它也提供一些系统资源的边界管理,例如线程资源,任务队列大小管理
  * and they provide a means of bounding and managing the resources,
  * including threads, consumed when executing a collection of tasks.
  * Each {@code ThreadPoolExecutor} also maintains some basic
- * statistics, such as the number of completed tasks.
+ * statistics, such as the number of completed tasks.                               //同时它自身也负责维护一些基本的统计,例如完成的任务数,达到的最大线程数
  *
- * <p>To be useful across a wide range of contexts, this class
+ * <p>To be useful across a wide range of contexts, this class                      //为了支持大多数的应用场景,这个类提供了很多可调整的参数方法,扩展性很好
  * provides many adjustable parameters and extensibility
- * hooks. However, programmers are urged to use the more convenient
- * {@link Executors} factory methods {@link
+ * hooks. However, programmers are urged to use the more convenient                 //程序员可以利用Executors的工厂方法创建一些线程池
+ * {@link Executors} factory methods {@link                                         //例如newCachedThreadPool(无边界的线程池,原子自旋地线程回收),newFixedThreadPool(固定大小的线程池),newSingleThreadExecutor(单个线程的线程池)
  * Executors#newCachedThreadPool} (unbounded thread pool, with
  * automatic thread reclamation), {@link Executors#newFixedThreadPool}
  * (fixed size thread pool) and {@link
  * Executors#newSingleThreadExecutor} (single background thread), that
  * preconfigure settings for the most common usage
- * scenarios. Otherwise, use the following guide when manually
+ * scenarios. Otherwise, use the following guide when manually                      //若要个性化的定制线程池,则要参考下面的参数设置:
  * configuring and tuning this class:
  *
  * <dl>
  *
- * <dt>Core and maximum pool sizes</dt>
+ * <dt>Core and maximum pool sizes</dt>                                             //-----【1.核心线程数,最大线程数,当前线程数】-------
  *
  * <dd>A {@code ThreadPoolExecutor} will automatically adjust the
  * pool size (see {@link #getPoolSize})
@@ -75,28 +75,28 @@ import java.util.*;
  * corePoolSize (see {@link #getCorePoolSize}) and
  * maximumPoolSize (see {@link #getMaximumPoolSize}).
  *
- * When a new task is submitted in method {@link #execute}, and fewer
+ * When a new task is submitted in method {@link #execute}, and fewer               //当一个任务提交给线程池时,若此时当前线程数小于核心线程数,则创建一个核心线程处理请求,即使线程池中存在空闲的线程
  * than corePoolSize threads are running, a new thread is created to
  * handle the request, even if other worker threads are idle.  If
- * there are more than corePoolSize but less than maximumPoolSize
+ * there are more than corePoolSize but less than maximumPoolSize                   //当一个任务提交给线程池时,若当前线程数大于核心线程数,小于最大线程数时,只有任务队列满时,才创建一个最大线程
  * threads running, a new thread will be created only if the queue is
- * full.  By setting corePoolSize and maximumPoolSize the same, you
+ * full.  By setting corePoolSize and maximumPoolSize the same, you                 //通过设置核心线程数和最大线程数相同,创建一个固定大小的线程池
  * create a fixed-size thread pool. By setting maximumPoolSize to an
- * essentially unbounded value such as {@code Integer.MAX_VALUE}, you
+ * essentially unbounded value such as {@code Integer.MAX_VALUE}, you               //当设置最大线程数为一个没有边界的值,例如Integer.MAX_VALUE,这样设置允许线程池处理任意数量的任务
  * allow the pool to accommodate an arbitrary number of concurrent
  * tasks. Most typically, core and maximum pool sizes are set only
- * upon construction, but they may also be changed dynamically using
- * {@link #setCorePoolSize} and {@link #setMaximumPoolSize}. </dd>
+ * upon construction, but they may also be changed dynamically using                //核心线程数和最大线程数通常在构造函数中就设置好了
+ * {@link #setCorePoolSize} and {@link #setMaximumPoolSize}. </dd>                  //你也可以调用setCorePoolSize,setMaximumPoolSize动态设置
  *
  * <dt>On-demand construction</dt>
  *
- * <dd> By default, even core threads are initially created and
+ * <dd> By default, even core threads are initially created and                     //如果你构造了一个线程池,池中包含了一个非空的任务队列,你可能希望初始化时候就创建一些核心线程处理任务,可以调用prestartCoreThread or prestartAllCoreThreads
  * started only when new tasks arrive, but this can be overridden
  * dynamically using method {@link #prestartCoreThread} or {@link
  * #prestartAllCoreThreads}.  You probably want to prestart threads if
  * you construct the pool with a non-empty queue. </dd>
  *
- * <dt>Creating new threads</dt>
+ * <dt>Creating new threads</dt>                                                    //-----【2.ThreadFactory 新线程生产工厂】-------
  *
  * <dd>New threads are created using a {@link ThreadFactory}.  If not
  * otherwise specified, a {@link Executors#defaultThreadFactory} is
@@ -113,45 +113,45 @@ import java.util.*;
  * take effect in a timely manner, and a shutdown pool may remain in a
  * state in which termination is possible but not completed.</dd>
  *
- * <dt>Keep-alive times</dt>
+ * <dt>Keep-alive times</dt>                                                        //-----【3.keepAliveTime 线程空闲等待时间】-------
  *
- * <dd>If the pool currently has more than corePoolSize threads,
+ * <dd>If the pool currently has more than corePoolSize threads,                    //Keep-alive策略 : 如果池中当前线程的数量超过了核心线程数,超过的线程如果空闲时间超过了keepAliveTime时间,则这些线程将要被终结
  * excess threads will be terminated if they have been idle for more
- * than the keepAliveTime (see {@link #getKeepAliveTime}). This
+ * than the keepAliveTime (see {@link #getKeepAliveTime}). This                     //这种策略可以保证在线程没有被充分利用的情况下,减少系统的开销
  * provides a means of reducing resource consumption when the pool is
- * not being actively used. If the pool becomes more active later, new
+ * not being actively used. If the pool becomes more active later, new              //以后如果线程池又被充分利用的时候,会相应的创建新的最大(临时)线程
  * threads will be constructed. This parameter can also be changed
- * dynamically using method {@link #setKeepAliveTime}. Using a value
+ * dynamically using method {@link #setKeepAliveTime}. Using a value                //keepAliveTime可以动态设置,see setKeepAliveTime
  * of {@code Long.MAX_VALUE} {@link TimeUnit#NANOSECONDS} effectively
  * disables idle threads from ever terminating prior to shut down. By
- * default, the keep-alive policy applies only when there are more
- * than corePoolSizeThreads. But method {@link
+ * default, the keep-alive policy applies only when there are more                  //默认的keep-alive策略作用于核心线程以外的临时线程
+ * than corePoolSizeThreads. But method {@link                                      //设置allowCoreThreadTimeOut为true,可以将这种策略也作用于核心线程上
  * #allowCoreThreadTimeOut(boolean)} can be used to apply this
  * time-out policy to core threads as well, so long as the
  * keepAliveTime value is non-zero. </dd>
  *
- * <dt>Queuing</dt>
+ * <dt>Queuing</dt>                                                                 //-----【3.queue 阻塞队列】-------
  *
- * <dd>Any {@link BlockingQueue} may be used to transfer and hold
- * submitted tasks.  The use of this queue interacts with pool sizing:
+ * <dd>Any {@link BlockingQueue} may be used to transfer and hold                   //任何阻塞队列的实现都可以转移或者持有提交的任务
+ * submitted tasks.  The use of this queue interacts with pool sizing:              //任务队列和线程池交互和当前线程池的大小有关:
  *
  * <ul>
  *
- * <li> If fewer than corePoolSize threads are running, the Executor
+ * <li> If fewer than corePoolSize threads are running, the Executor                //当少于核心线程数的线程在运行时,有新任务来时往往都是新建个线程处理请求而不是入队
  * always prefers adding a new thread
  * rather than queuing.</li>
  *
- * <li> If corePoolSize or more threads are running, the Executor
+ * <li> If corePoolSize or more threads are running, the Executor                   //当有大于核心线程数的线程运行时,新任务来时往往是入队而不是新建线程处理
  * always prefers queuing a request rather than adding a new
  * thread.</li>
  *
- * <li> If a request cannot be queued, a new thread is created unless
+ * <li> If a request cannot be queued, a new thread is created unless              //任务队列满并且当前线程数超过了最大线程,则任务执行reject策略
  * this would exceed maximumPoolSize, in which case, the task will be
  * rejected.</li>
  *
  * </ul>
  *
- * There are three general strategies for queuing:
+ * There are three general strategies for queuing:                                 //这里有3种队列选择的策略:
  * <ol>
  *
  * <li> <em> Direct handoffs.</em> A good default choice for a work
