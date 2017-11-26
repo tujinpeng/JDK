@@ -130,7 +130,7 @@ import java.util.*;
  * time-out policy to core threads as well, so long as the
  * keepAliveTime value is non-zero. </dd>
  *
- * <dt>Queuing</dt>                                                                 //-----【3.queue 阻塞队列】-------
+ * <dt>Queuing</dt>                                                                 //-----【4.queue 阻塞队列】-------
  *
  * <dd>Any {@link BlockingQueue} may be used to transfer and hold                   //任何阻塞队列的实现都可以转移或者持有提交的任务
  * submitted tasks.  The use of this queue interacts with pool sizing:              //任务队列和线程池交互和当前线程池的大小有关:
@@ -151,43 +151,43 @@ import java.util.*;
  *
  * </ul>
  *
- * There are three general strategies for queuing:                                 //这里有3种队列选择的策略:
+ * There are three general strategies for queuing:                                 //这里有3种任务队列选择的策略:
  * <ol>
  *
- * <li> <em> Direct handoffs.</em> A good default choice for a work
- * queue is a {@link SynchronousQueue} that hands off tasks to threads
- * without otherwise holding them. Here, an attempt to queue a task
+ * <li> <em> Direct handoffs.</em> A good default choice for a work                //【Direct handoff 策略】：
+ * queue is a {@link SynchronousQueue} that hands off tasks to threads             //这是一个好的默认的选择策略，通过SynchronousQueue实现在线程间传递任务而不是持有他们。
+ * without otherwise holding them. Here, an attempt to queue a task                //这里，一个尝试入队任务的线程，若此时线程池中没有多余的线程立即处理运行任务，则入队失败，可能线程池直接创建一个新线程处理
  * will fail if no threads are immediately available to run it, so a
- * new thread will be constructed. This policy avoids lockups when
- * handling sets of requests that might have internal dependencies.
+ * new thread will be constructed. This policy avoids lockups when                 //这种策略避免了当处理一系列任务请求时为了线程安全加锁的动作
+ * handling sets of requests that might have internal dependencies.                //所以，这种策略通常需要设置一个没有边界的(较大的)maximumPoolSize,为了避免新提交的任务被抛弃
  * Direct handoffs generally require unbounded maximumPoolSizes to
  * avoid rejection of new submitted tasks. This in turn admits the
- * possibility of unbounded thread growth when commands continue to
+ * possibility of unbounded thread growth when commands continue to                //换言之，当此时到达一大波比平时线程池能够处理的更快更多的任务时，可能线程池中的线程会没有边界地增长
  * arrive on average faster than they can be processed.  </li>
  *
- * <li><em> Unbounded queues.</em> Using an unbounded queue (for
- * example a {@link LinkedBlockingQueue} without a predefined
- * capacity) will cause new tasks to wait in the queue when all
- * corePoolSize threads are busy. Thus, no more than corePoolSize
+ * <li><em> Unbounded queues.</em> Using an unbounded queue (for                    //【Unbounded queues 策略】：
+ * example a {@link LinkedBlockingQueue} without a predefined                       //例如使用没有预先定义容量的LinkedBlockingQueue
+ * capacity) will cause new tasks to wait in the queue when all                     //这种策略会导致当所有的核心线程繁忙时，新的请求任务将会直接入队列等待处理
+ * corePoolSize threads are busy. Thus, no more than corePoolSize                   //同时意味着不会有超过核心线程数的线程被创建（最大线程数maximumPoolSize配置没有意义）
  * threads will ever be created. (And the value of the maximumPoolSize
- * therefore doesn't have any effect.)  This may be appropriate when
- * each task is completely independent of others, so tasks cannot
+ * therefore doesn't have any effect.)  This may be appropriate when                //这种策略也许适合每个任务完全独立于其他任务，任务彼此间不会相互影响（因为队列容量没有边界，不会因为一种任务过多导致其他任务入队不了）
+ * each task is completely independent of others, so tasks cannot                   //这种策略有用于在web应用种，当某一时刻请求突发，这种队列可以无限的增长。(可能会造成内存溢出)
  * affect each others execution; for example, in a web page server.
  * While this style of queuing can be useful in smoothing out
  * transient bursts of requests, it admits the possibility of
  * unbounded work queue growth when commands continue to arrive on
  * average faster than they can be processed.  </li>
  *
- * <li><em>Bounded queues.</em> A bounded queue (for example, an
- * {@link ArrayBlockingQueue}) helps prevent resource exhaustion when
- * used with finite maximumPoolSizes, but can be more difficult to
+ * <li><em>Bounded queues.</em> A bounded queue (for example, an                    //【Bounded queues 策略】：
+ * {@link ArrayBlockingQueue}) helps prevent resource exhaustion when               //例如使用有界的ArrayBlockingQueue(同时配置有限的最大线程数)
+ * used with finite maximumPoolSizes, but can be more difficult to                  //这种策略可以帮助预防资源的耗尽，但是比较难调整和控制队列容量和最大线程数：
  * tune and control.  Queue sizes and maximum pool sizes may be traded
- * off for each other: Using large queues and small pools minimizes
- * CPU usage, OS resources, and context-switching overhead, but can
+ * off for each other: Using large queues and small pools minimizes                 //如果使用较大的队列容量和较小的线程数，虽然会使cpu资源，os资源，线程上下文切换降到最小，但是会人为地导致线程池吞吐量减少：
+ * CPU usage, OS resources, and context-switching overhead, but can                 //尤其是当线程池中任务有I/O阻塞时，此时cpu会被释放，系统可以调度更多的线程（但是现在线程大小被人为的设置的很小）
  * lead to artificially low throughput.  If tasks frequently block (for
  * example if they are I/O bound), a system may be able to schedule
  * time for more threads than you otherwise allow. Use of small queues
- * generally requires larger pool sizes, which keeps CPUs busier but
+ * generally requires larger pool sizes, which keeps CPUs busier but                //如果使用较小的队列和较大的线程大小，这样虽然会保持cpu的充分工作，但是会带来无法接受的线程调度开销，这样也会降低线程池的吞吐量
  * may encounter unacceptable scheduling overhead, which also
  * decreases throughput.  </li>
  *
@@ -195,7 +195,7 @@ import java.util.*;
  *
  * </dd>
  *
- * <dt>Rejected tasks</dt>
+ * <dt>Rejected tasks</dt>                                                          //-----【5.Rejected tasks 4大饱和策略】-------
  *
  * <dd> New tasks submitted in method {@link #execute} will be
  * <em>rejected</em> when the Executor has been shut down, and also
