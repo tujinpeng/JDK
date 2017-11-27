@@ -316,11 +316,12 @@ import java.util.*;
  */
 public class ThreadPoolExecutor extends AbstractExecutorService {
     /**
-     * The main pool control state, ctl, is an atomic integer packing
-     * two conceptual fields
-     *   workerCount, indicating the effective number of threads
-     *   runState,    indicating whether running, shutting down etc
-     *
+     * The main pool control state, ctl, is an atomic integer packing               //线程池控制状态clt使用了一个原子的integer(32位)，用来包装两个概念上的字段：
+     * two conceptual fields                                                        //(1)runState(线程池状态)：          占用integer中除第一位符号位外的高2位
+     *   workerCount, indicating the effective number of threads                    //(2)workerCount(工作者线程数量):    占用integer中低29位
+     *   runState,    indicating whether running, shutting down etc                 //e.g:   0       00     00000000000000000000000000000
+     *                                                                                     [最高位]  [高2位]             [低29位]
+     *                                                                                      符号位  线程池状态           工作者线程数
      * In order to pack them into one int, we limit workerCount to
      * (2^29)-1 (about 500 million) threads rather than (2^31)-1 (2
      * billion) otherwise representable. If this is ever an issue in
@@ -336,16 +337,16 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * bookkeeping before terminating. The user-visible pool size is
      * reported as the current size of the workers set.
      *
-     * The runState provides the main lifecyle control, taking on values:
+     * The runState provides the main lifecyle control, taking on values:           //runState(线程池状态)控制着线程池的整个生命周期,有以下5种状态======》
      *
-     *   RUNNING:  Accept new tasks and process queued tasks
-     *   SHUTDOWN: Don't accept new tasks, but process queued tasks
-     *   STOP:     Don't accept new tasks, don't process queued tasks,
+     *   RUNNING:  Accept new tasks and process queued tasks                        //RUNNING:      接收新任务，也要处理任务队列中的任务
+     *   SHUTDOWN: Don't accept new tasks, but process queued tasks                 //SHUTDOWN:     不再接受新任务，但会处理任务队列中任务
+     *   STOP:     Don't accept new tasks, don't process queued tasks,              //STOP:         不接受新任务，也不处理任务队列中剩余任务
      *             and interrupt in-progress tasks
-     *   TIDYING:  All tasks have terminated, workerCount is zero,
+     *   TIDYING:  All tasks have terminated, workerCount is zero,                  //TIDYING:      此时所有任务线程被终结，线程池中工作者线程数为0，将要调用钩子方法terminated()
      *             the thread transitioning to state TIDYING
      *             will run the terminated() hook method
-     *   TERMINATED: terminated() has completed
+     *   TERMINATED: terminated() has completed                                     //TERMINATED:   最终状态，当钩子方法terminated()方法调用完成后，代表线程池完全终结了
      *
      * The numerical order among these values matters, to allow
      * ordered comparisons. The runState monotonically increases over
