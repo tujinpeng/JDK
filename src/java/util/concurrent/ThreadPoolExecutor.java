@@ -62,7 +62,7 @@ import java.util.*;
  * (fixed size thread pool) and {@link
  * Executors#newSingleThreadExecutor} (single background thread), that
  * preconfigure settings for the most common usage
- * scenarios. Otherwise, use the following guide when manually                      //若要个性化的定制线程池,则要参考下面的参数设置:
+ * scenarios. Otherwise, use the following guide when manually                      //若要个性化的定制线程池,则要参考下面的参数和方法说明:
  * configuring and tuning this class:
  *
  * <dl>
@@ -197,56 +197,56 @@ import java.util.*;
  *
  * <dt>Rejected tasks</dt>                                                          //-----【5.Rejected tasks 4大饱和策略】-------
  *
- * <dd> New tasks submitted in method {@link #execute} will be
+ * <dd> New tasks submitted in method {@link #execute} will be                      //当线程池被shut down或者队列容量和最大线程数都达到上限后,新任务提交给线程池时,会执行丢弃策略
  * <em>rejected</em> when the Executor has been shut down, and also
- * when the Executor uses finite bounds for both maximum threads and
+ * when the Executor uses finite bounds for both maximum threads and                //丢弃策略执行RejectExecutionHandler.rejectExecution
  * work queue capacity, and is saturated.  In either case, the {@code
  * execute} method invokes the {@link
  * RejectedExecutionHandler#rejectedExecution} method of its {@link
- * RejectedExecutionHandler}.  Four predefined handler policies are
+ * RejectedExecutionHandler}.  Four predefined handler policies are                 //以下提供了4中饱和策略:
  * provided:
  *
  * <ol>
  *
- * <li> In the default {@link ThreadPoolExecutor.AbortPolicy}, the
- * handler throws a runtime {@link RejectedExecutionException} upon
+ * <li> In the default {@link ThreadPoolExecutor.AbortPolicy}, the                  //【AbortPolicy 策略】：
+ * handler throws a runtime {@link RejectedExecutionException} upon                 //直接抛出RejectExecutionException运行时异常
  * rejection. </li>
  *
- * <li> In {@link ThreadPoolExecutor.CallerRunsPolicy}, the thread
- * that invokes {@code execute} itself runs the task. This provides a
- * simple feedback control mechanism that will slow down the rate that
+ * <li> In {@link ThreadPoolExecutor.CallerRunsPolicy}, the thread                  //【CallerRunsPolicy 策略】：
+ * that invokes {@code execute} itself runs the task. This provides a               //提交任务的客户端线程负责执行任务,不在交给线程池处理
+ * simple feedback control mechanism that will slow down the rate that              //这种策略可以降低客户端提交任务的速度
  * new tasks are submitted. </li>
  *
- * <li> In {@link ThreadPoolExecutor.DiscardPolicy}, a task that
- * cannot be executed is simply dropped.  </li>
+ * <li> In {@link ThreadPoolExecutor.DiscardPolicy}, a task that                    //【DiscardPolicy 策略】：
+ * cannot be executed is simply dropped.  </li>                                     // 执行空方法,直接丢弃任务不管
  *
- * <li>In {@link ThreadPoolExecutor.DiscardOldestPolicy}, if the
- * executor is not shut down, the task at the head of the work queue
+ * <li>In {@link ThreadPoolExecutor.DiscardOldestPolicy}, if the                    //【DiscardOldestPolicy 策略】：
+ * executor is not shut down, the task at the head of the work queue                // 当线程池没有shut down时,这种策略会将队列头掉部元素丢弃(最早的任务),重新提交新任务
  * is dropped, and then execution is retried (which can fail again,
  * causing this to be repeated.) </li>
  *
  * </ol>
  *
- * It is possible to define and use other kinds of {@link
+ * It is possible to define and use other kinds of {@link                           //用户也可以自定义饱和策略
  * RejectedExecutionHandler} classes. Doing so requires some care
  * especially when policies are designed to work only under particular
  * capacity or queuing policies. </dd>
  *
- * <dt>Hook methods</dt>
+ * <dt>Hook methods</dt>                                                            //-----【6.Hook methods 线程池模板方法的扩展】-------
  *
- * <dd>This class provides {@code protected} overridable {@link
- * #beforeExecute} and {@link #afterExecute} methods that are called
- * before and after execution of each task.  These can be used to
+ * <dd>This class provides {@code protected} overridable {@link                     //beforeExecute()和afterExecute()方法:
+ * #beforeExecute} and {@link #afterExecute} methods that are called                //在每个任务执行前或者执行后操控上下文的环境:
+ * before and after execution of each task.  These can be used to                   //例如重新初始化ThreadLocal变量、收集一些统计、添加一些日志的条目
  * manipulate the execution environment; for example, reinitializing
  * ThreadLocals, gathering statistics, or adding log
- * entries. Additionally, method {@link #terminated} can be overridden
- * to perform any special processing that needs to be done once the
+ * entries. Additionally, method {@link #terminated} can be overridden              //terminated():
+ * to perform any special processing that needs to be done once the                 //当线程池完全终结的时候,需要特别处理时调用的方法
  * Executor has fully terminated.
  *
- * <p>If hook or callback methods throw exceptions, internal worker
+ * <p>If hook or callback methods throw exceptions, internal worker                 //注意:当以上被子类覆写的方法有异常时,会导致工作者线程退出
  * threads may in turn fail and abruptly terminate.</dd>
  *
- * <dt>Queue maintenance</dt>
+ * <dt>Queue maintenance</dt>                                                       //-----【7.Queue maintenance 任务队列获取】-------
  *
  * <dd> Method {@link #getQueue} allows access to the work queue for
  * purposes of monitoring and debugging.  Use of this method for any
@@ -255,19 +255,19 @@ import java.util.*;
  * storage reclamation when large numbers of queued tasks become
  * cancelled.</dd>
  *
- * <dt>Finalization</dt>
+ * <dt>Finalization</dt>                                                            //-----【8.Finalization 线程池终结】-------
  *
- * <dd> A pool that is no longer referenced in a program <em>AND</em>
- * has no remaining threads will be {@code shutdown} automatically. If
- * you would like to ensure that unreferenced pools are reclaimed even
+ * <dd> A pool that is no longer referenced in a program <em>AND</em>               //线程池何时终结??? 取决于:
+ * has no remaining threads will be {@code shutdown} automatically. If              //(1)线程池本身的对象在应用中没有强引用了
+ * you would like to ensure that unreferenced pools are reclaimed even              //(2)没有剩余的工作者线程在自动运行(调用shutdown方法)
  * if users forget to call {@link #shutdown}, then you must arrange
- * that unused threads eventually die, by setting appropriate
- * keep-alive times, using a lower bound of zero core threads and/or
+ * that unused threads eventually die, by setting appropriate                       //当一个没有强引用的线程池,用户忘记调用shutdown(),工作者线程无法停止,可能会造成内存泄漏:
+ * keep-alive times, using a lower bound of zero core threads and/or                //为了防止这种情况的发生,确保工作者线程能够被最终死亡,可以通过keep-alive策略,设置下限的核心线程数为0或者allowCoreThreadTimeOut(true)允许核心线程也超时等待
  * setting {@link #allowCoreThreadTimeOut(boolean)}.  </dd>
  *
  * </dl>
  *
- * <p> <b>Extension example</b>. Most extensions of this class
+ * <p> <b>Extension example</b>. Most extensions of this class                      //以下是一个扩展的线程池例子(覆写beforeExecute方法),可以实现一键【暂停和恢复所有任务执行的线程池】
  * override one or more of the protected hook methods. For example,
  * here is a subclass that adds a simple pause/resume feature:
  *
