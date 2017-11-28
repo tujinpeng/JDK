@@ -350,20 +350,24 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      *
      * The numerical order among these values matters, to allow
      * ordered comparisons. The runState monotonically increases over
-     * time, but need not hit each state. The transitions are:
+     * time, but need not hit each state. The transitions are:                      //线程池状态随着时间的迁移单调递增,不会击中每一种状态,只会发生状态的改变:
      *
-     * RUNNING -> SHUTDOWN
-     *    On invocation of shutdown(), perhaps implicitly in finalize()
-     * (RUNNING or SHUTDOWN) -> STOP
-     *    On invocation of shutdownNow()
-     * SHUTDOWN -> TIDYING
-     *    When both queue and pool are empty
-     * STOP -> TIDYING
-     *    When pool is empty
-     * TIDYING -> TERMINATED
-     *    When the terminated() hook method has completed
+     * RUNNING -> SHUTDOWN                                                          //【RUNNING -> SHUTDOWN】
+     *    On invocation of shutdown(), perhaps implicitly in finalize()             // 调用shutdown()方法
      *
-     * Threads waiting in awaitTermination() will return when the
+     * (RUNNING or SHUTDOWN) -> STOP                                                //【(RUNNING or SHUTDOWN) -> STOP】
+     *    On invocation of shutdownNow()                                            //调用shutdowNow()方法
+     *
+     * SHUTDOWN -> TIDYING                                                          //【SHUTDOWN -> TIDYING】
+     *    When both queue and pool are empty                                        // 线程池中任务队列和工作者线程都没有了
+     *
+     * STOP -> TIDYING                                                              //【STOP -> TIDYING】
+     *    When pool is empty                                                        // STOP状态(工作者线程不在执行剩余的任务),线程池中工作者线程没有了将变为TIDYING
+     *
+     * TIDYING -> TERMINATED                                                        //【TIDYING -> TERMINATED】
+     *    When the terminated() hook method has completed                           // 调用钩子方法terminated()结束 线程池完全结束
+     *
+     * Threads waiting in awaitTermination() will return when the                   // 只有当线程池状态变为TERMINATED时,等待在awaitTermination()上的线程才会返回
      * state reaches TERMINATED.
      *
      * Detecting the transition from SHUTDOWN to TIDYING is less
@@ -440,6 +444,12 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * return null even if it may later return non-null when delays
      * expire.
      */
+    /*
+     * 任务队列,用来持有任务,通过工作者线程通过offer(),take()方法和任务队列进行交互。
+     * 工作者线程获取任务不需要通过poll()方法而是take方法()原因:
+     *   (1)线程池中核心线程时不会销毁的,要一直等待任务队列新增任务来消费,所以要用take();最大线程的工作者线程空闲时要实现超时等待,要调用poll(超时)方法
+     *   (2)用poll()方法获取任务,不适用于DelayQueue,当DelayQueue.poll()返回null时,不代表此时队列没有元素了,只是任务还有到过期时间
+     */
     private final BlockingQueue<Runnable> workQueue;
 
     /**
@@ -455,29 +465,36 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * ensuring workers set is stable while separately checking
      * permission to interrupt and actually interrupting.
      */
+    /*
+     * 当访问线程池中工作者列表和相关的一些统计数据时(完成的任务数,最大线程数),需要持有mainLock保证其可见性.
+     */
     private final ReentrantLock mainLock = new ReentrantLock();
 
     /**
      * Set containing all worker threads in pool. Accessed only when
      * holding mainLock.
      */
+    //工作者线程列表,需持有mainLock访问
     private final HashSet<Worker> workers = new HashSet<Worker>();
 
     /**
      * Wait condition to support awaitTermination
      */
+    //等待线程池终结的条件队列
     private final Condition termination = mainLock.newCondition();
 
     /**
      * Tracks largest attained pool size. Accessed only under
      * mainLock.
      */
+    //到达的最大线程数统计,需持有mainLock锁访问
     private int largestPoolSize;
 
     /**
      * Counter for completed tasks. Updated only on termination of
      * worker threads. Accessed only under mainLock.
      */
+    //线程池中每个工作者线程完成的任务汇总统计,需持有mainLock锁访问
     private long completedTaskCount;
 
     /*
@@ -504,11 +521,18 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * will likely be enough memory available for the cleanup code to
      * complete without encountering yet another OutOfMemoryError.
      */
+    /*
+     * threadFactory采用抽象工厂模式,生产工作者的线程:
+     * 所有工作者线程thread创建都利用这个工厂(see addWorker);
+     * 当线程启动申请栈内存时内存不足或者系统中设置用户线程数较小时,会导致创建工作者线程失败,从而导致抛出异常,提交的任务可能会丢失;
+     * 当创建线程遇到以上问题时,最终会从工作者线程列表中将有问题的工作者线程清理掉,防止进一步的内存溢出OutOfMemoryError
+     */
     private volatile ThreadFactory threadFactory;
 
     /**
      * Handler called when saturated or shutdown in execute.
      */
+    //线程池饱和时的处理,采用策略模式
     private volatile RejectedExecutionHandler handler;
 
     /**
@@ -517,6 +541,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * present or if allowCoreThreadTimeOut. Otherwise they wait
      * forever for new work.
      */
+    /*
+     * 空闲线程的等待时间:
+     * -若此空闲的工作者线程时临时线程(最大线程)时,才会超时等待新任务的到来
+     * -若是核心线程,则会永远等待新任务的到来
+     */
     private volatile long keepAliveTime;
 
     /**
@@ -524,6 +553,8 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * If true, core threads use keepAliveTime to time out waiting
      * for work.
      */
+    //若为false(默认),核心线程空闲时,一直等待
+    //若为true,核心线程空闲时,也会超时等待keepAliveTime后然后退出终结
     private volatile boolean allowCoreThreadTimeOut;
 
     /**
@@ -531,17 +562,23 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * (and not allow to time out etc) unless allowCoreThreadTimeOut
      * is set, in which case the minimum is zero.
      */
+    /*
+     * 核心线程数:线程池中最少的工作者线程数量
+     * 线程池中要保持corePoolSize大小的工作者线程一直工作(空闲时不会超时终结,除非设置了allowCoreThreadTimeOut==true)
+     */
     private volatile int corePoolSize;
 
     /**
      * Maximum pool size. Note that the actual maximum is internally
      * bounded by CAPACITY.
      */
+    //最大线程数:线程池中工作者线程的上限,超过它则线程池执行饱和策略
     private volatile int maximumPoolSize;
 
     /**
      * The default rejected execution handler
      */
+    //默认的饱和策略
     private static final RejectedExecutionHandler defaultHandler =
         new AbortPolicy();
 
