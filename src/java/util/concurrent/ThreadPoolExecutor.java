@@ -606,19 +606,25 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         new RuntimePermission("modifyThread");
 
     /**
-     * Class Worker mainly maintains interrupt control state for
-     * threads running tasks, along with other minor bookkeeping.
-     * This class opportunistically extends AbstractQueuedSynchronizer
-     * to simplify acquiring and releasing a lock surrounding each
-     * task execution.  This protects against interrupts that are
-     * intended to wake up a worker thread waiting for a task from
-     * instead interrupting a task being run.  We implement a simple
-     * non-reentrant mutual exclusion lock rather than use
-     * ReentrantLock because we do not want worker tasks to be able to
+     * Class Worker mainly maintains interrupt control state for                    //工作者线程:
+     * threads running tasks, along with other minor bookkeeping.                   //该类主要是控制线程执行任务时的interrupt操作,以及一些其他的较小的统计;
+     *
+     * This class opportunistically extends AbstractQueuedSynchronizer              //加锁机制:  -该类适时的扩展了AQS,当任务执行前获取锁,任务执行后释放锁【用加锁来标记线程在执行任务,释放锁标记没有任务在执行】;
+     * to simplify acquiring and releasing a lock surrounding each                  //         -其他线程调用该该线程tryLock()失败,表示该线程正在执行任务中,否则该线程可能处于空闲状态
+     *
+     * task execution.  This protects against interrupts that are                   //这种加锁方式提供了一种【任务执行中的工作者线程不允许中断的机制】:
+     * intended to wake up a worker thread waiting for a task from                  //  -当调用shutdown关闭线程池时,需要中断空闲中的工作者线程,执行任务中的线程时不允许中断的,所以中断一个线程之前,先尝试获取线程的锁,获取锁失败表示线程在执行任务,因此不会最终中断此线程
+     * instead interrupting a task being run.  We implement a simple                //  -调用shutdownNow关闭线程池不同于shutdown,它不管工作者线程是否在执行任务,直接中断,所以中断一个线程前不需要调用tryLock()。
+     *
+     *                                                                              // 当线程池处于异常状态时,此时需要中断所有工作者线程,保证工作者线程能够正常退出:
+     *                                                                              // 工作者线程运行的过程实际上是不断的获取任务、加锁、执行任务、释放锁的过程,获取任务的过程是响应中断的,因此若该线程被中断最终会正常退出
+     *
+     * non-reentrant mutual exclusion lock rather than use                          // 这里实现了一个简单的不可重入的互斥锁,而不是采用ReentrantLock原因是:
+     * ReentrantLock because we do not want worker tasks to be able to              // 我们不希望工作者线程在获取lock执行任务时,同时还可以调用线程池方法setCorePoolSize(方法内部会再次获取锁tryLock中断本线程)
      * reacquire the lock when they invoke pool control methods like
      * setCorePoolSize.  Additionally, to suppress interrupts until
-     * the thread actually starts running tasks, we initialize lock
-     * state to a negative value, and clear it upon start (in
+     * the thread actually starts running tasks, we initialize lock                 // 此外,为了防止工作者线程还没start运行前,过早的被中断,我们初始化工作者线程时,设置lock状态位为负数
+     * state to a negative value, and clear it upon start (in                       // 此时尝试获取锁时会失败要中断该线程时会失败,直到工作者线程真正在运行时会清除这个状态
      * runWorker).
      */
     private final class Worker
